@@ -1,0 +1,14 @@
+{
+  "name": "rescue-pins",
+  "version": "1.0.0",
+  "description": "Rescue Pins — sequencing puzzle (browser + Node ESM)",
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "start": "node server.js"
+  },
+  "license": "ISC",
+  "dependencies": {
+    "three": "^0.185.1"
+  }
+}

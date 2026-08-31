@@ -1,0 +1,15 @@
+[
+  { "name": "pin-slide-metal", "seconds": 1, "prompt": "A metal pin sliding out of a tight slot, short bright metallic scrape with a clean release", "event": "pull" },
+  { "name": "pin-clank", "seconds": 1, "prompt": "A small steel pin dropped onto a stone floor, single crisp clank with a short ring", "event": "pull" },
+  { "name": "water-rush", "seconds": 2, "prompt": "Water rushing through a narrow channel, quick whooshing pour that settles into a brief flow", "event": "flow" },
+  { "name": "water-splash", "seconds": 1, "prompt": "A splash of water landing in a shallow pool, bright liquid splash with small droplets", "event": "flow" },
+  { "name": "steam-hiss", "seconds": 2, "prompt": "Water hitting hot lava, loud steam hiss with a soft sizzling fade", "event": "neutralize" },
+  { "name": "lava-sizzle-out", "seconds": 2, "prompt": "Bubbling lava being extinguished, crackling sizzle that chokes out into steam", "event": "neutralize" },
+  { "name": "rescue-chime", "seconds": 2, "prompt": "A warm rising chime of small hand bells, cheerful short celebration", "event": "win" },
+  { "name": "villager-cheer", "seconds": 3, "prompt": "A small crowd of villagers cheering briefly, joyful short group shout with claps", "event": "win" },
+  { "name": "lava-rumble", "seconds": 2, "prompt": "A low ominous lava rumble with deep bubbling, swelling then dying away", "event": "lose" },
+  { "name": "fail-thud", "seconds": 1, "prompt": "A heavy dull wooden thud, single low impact with a short muffled decay", "event": "lose" },
+  { "name": "blocked-thunk", "seconds": 1, "prompt": "A stuck pin knocked against its blocked slot, short wooden thunk with a dull metal tick", "event": "invalid" },
+  { "name": "rewind-swish", "seconds": 1, "prompt": "A quick reverse tape swish, airy upward whoosh suggesting time winding back", "event": "undo" },
+  { "name": "ui-click", "seconds": 1, "prompt": "A soft wooden button click, short rounded tap, gentle and dry", "event": "ack" }
+]
