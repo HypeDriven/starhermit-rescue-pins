@@ -302,15 +302,18 @@ export function createUI(root, actions, settings) {
     let list = railRight.querySelector('.rp-pin-list');
     if (!list) {
       list = el('div', 'rp-pin-list');
-      list.setAttribute('role', 'listbox');
       list.setAttribute('aria-label', 'Pins you can pull');
       railRight.appendChild(list);
     }
     list.innerHTML = '';
     for (const id of legalPinIds) {
+      // Real action buttons (clicking pulls the pin). Do NOT override their
+      // native `button` role — role="option" unmasked the button semantics and
+      // made "Pin N" unreachable for assistive tech and role-based selectors
+      // (e.g. getByRole('button')). Selection is conveyed by the .rp-selected
+      // class; the buttons themselves are the actionable controls.
       const b = button('Pin ' + id, 'rp-pin-opt' + (id === selectedId ? ' rp-selected' : ''), () => actions.pullPin(id));
-      b.setAttribute('role', 'option');
-      b.setAttribute('aria-selected', id === selectedId ? 'true' : 'false');
+      b.setAttribute('aria-pressed', id === selectedId ? 'true' : 'false');
       list.appendChild(b);
     }
   }

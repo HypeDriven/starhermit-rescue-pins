@@ -275,12 +275,20 @@ export function createRenderer(container, opts) {
 
   function setPaused(p) { running = !p; }
   function dispose() {
+    if (resizeObserver) resizeObserver.disconnect();
+    window.removeEventListener('resize', resize);
     for (const d of disposables) { if (d.dispose) d.dispose(); }
     disposables = [];
     renderer.dispose();
     if (renderer.domElement.parentNode) renderer.domElement.parentNode.removeChild(renderer.domElement);
   }
 
+  // Re-fit the render target to the host whenever the layout changes (the
+  // shell reflows on screen swap / rail content), instead of trusting a stale
+  // size captured at first paint. Keeping the canvas box in sync prevents it
+  // from overflowing the host and swallowing pointer events over the rails.
+  const resizeObserver = typeof ResizeObserver !== 'undefined' && new ResizeObserver(() => resize());
+  if (resizeObserver) resizeObserver.observe(container);
   window.addEventListener('resize', resize);
   resize();
 
