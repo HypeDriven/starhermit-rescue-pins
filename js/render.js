@@ -111,7 +111,6 @@ export function createRenderer(container, opts) {
     const waterMat = track(new THREE.MeshStandardMaterial({ color: palette.water, roughness: 0.25, emissive: palette.water, emissiveIntensity: 0.25 }));
     const lavaMat = track(new THREE.MeshStandardMaterial({ color: palette.lava, roughness: 0.5, emissive: palette.lava, emissiveIntensity: 0.7 }));
     const heroMat = track(new THREE.MeshStandardMaterial({ color: palette.hero, roughness: 0.6 }));
-    const pinMat = track(new THREE.MeshStandardMaterial({ color: palette.pin, metalness: 0.85, roughness: 0.3 }));
 
     const W = def.cols * FRAMING.cellW, H = def.rows * FRAMING.cellH;
 
@@ -152,8 +151,11 @@ export function createRenderer(container, opts) {
       }
     }
 
-    // brass pins on the interaction layer (raycast only against these)
+    // brass pins on the interaction layer (raycast only against these).
+    // Each pin gets its OWN material instance: the selection highlight writes
+    // emissive per pin, and a shared material would light up every pin at once.
     for (const p of def.pins) {
+      const pinMat = track(new THREE.MeshStandardMaterial({ color: palette.pin, metalness: 0.85, roughness: 0.3 }));
       const a = cellCenter(p.a[0], p.a[1], def), b = cellCenter(p.b[0], p.b[1], def);
       const mid = a.clone().add(b).multiplyScalar(0.5);
       const horizontal = p.a[1] !== p.b[1]; // separates rows -> pin lies horizontally
@@ -220,9 +222,7 @@ export function createRenderer(container, opts) {
       view.hero.visible = !!cell.hero;
     }
     for (const [id, g] of pinMeshes) {
-      const pulled = state.pulledPins.includes(id);
-      g.visible = !pulled || id === selectedPinId;
-      if (pulled) g.visible = false;
+      g.visible = !state.pulledPins.includes(id);
     }
   }
 

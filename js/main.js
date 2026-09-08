@@ -1,16 +1,17 @@
 // Rescue Pins — bootstrap: capability detection, module wiring, settings,
 // visibility/resize handling, fixed-step loop, offline API fallback.
 
-import { hashState, makeStreams } from './rules.js';
-import { getTutorial, getJourney, getDailyLevel, dailySeedForDate, validateLevel, THEMES, findLevel } from './content.js';
-import { createSession, loadSettings, saveSettings, loadProgression, saveProgression } from './session.js';
+import { solveState } from './rules.js';
+import { getTutorial, getJourney, getDailyLevel, dailySeedForDate, THEMES, findLevel } from './content.js';
+import { createSession, loadSettings, saveSettings, loadProgression, saveProgression, defaultStorage } from './session.js';
 import { createRenderer } from './render.js';
 import { createUI } from './ui.js';
 import { createAudio } from './audio.js';
 
 const root = document.getElementById('app');
-const settings = loadSettings();
-let prog = loadProgression();
+const storage = defaultStorage();
+const settings = loadSettings(storage);
+let prog = loadProgression(storage);
 const audio = createAudio(settings, (ev) => ui && ui.caption(soundCaption(ev)));
 
 function soundCaption(ev) {
@@ -87,7 +88,7 @@ function refreshHud(hint) {
 
 function startLevel(level, mode, tutorialLesson) {
   if (level.excluded) { ui.error('This day is excluded from ranking (defective content).'); return; }
-  sess = createSession({ level, mode: mode || 'journey', practice: mode === 'practice' || mode === 'tutorial', now: Date.now() });
+  sess = createSession({ storage, level, mode: mode || 'journey', practice: mode === 'practice' || mode === 'tutorial', now: Date.now() });
   sess.transition('preparing', 'level-selected');
   cmdCounter = 0;
   selectedPin = null;
@@ -97,8 +98,10 @@ function startLevel(level, mode, tutorialLesson) {
   if (tutorialLesson) announceLesson(tutorialLesson);
   let n = 2;
   ui.countdownScreen('Ready…');
+  const mySession = sess; // a newer startLevel must not be advanced by this timer
   const step = () => {
-    if (!sess || (sess.session.screen !== 'countdown' && sess.session.screen !== 'tutorial')) return;
+    if (sess !== mySession) return;
+    if (sess.session.screen !== 'countdown' && sess.session.screen !== 'tutorial') return;
     if (n-- > 0) { ui.countdownScreen(String(n + 1)); setTimeout(step, 450); }
     else {
       sess.transition('active', 'countdown-done');
@@ -138,6 +141,7 @@ function pullPin(pinId) {
 async function finishRound(term) {
   audio.play(term.won ? 'win' : 'lose');
   sess.session.elapsedMs = Date.now() - sess.session.startedAt;
+  try { storage.removeItem('rescue-pins:last'); } catch { /* storage denied */ }
   const score = sess.score();
   const id = sess.session.level.id;
   let dailySubmit = null;
@@ -145,7 +149,7 @@ async function finishRound(term) {
     prog.completed[id] = true;
     if (!prog.bestScores[id] || score.total > prog.bestScores[id]) prog.bestScores[id] = score.total;
     if (sess.session.mode === 'tutorial') prog.tutorialDone = true;
-    saveProgression(prog);
+    saveProgression(prog, storage);
   }
   if (sess.session.mode === 'daily' && term.won) {
     dailySubmit = await submitDaily(sess.replayEnvelope(), 'guest');
@@ -158,10 +162,14 @@ async function finishRound(term) {
   });
 }
 
+function hasSavedGame() {
+  try { return !!storage.getItem('rescue-pins:last'); } catch { return false; }
+}
+
 // ---- UI action handlers ----
 const actions = {
   uiAck: () => audio.play('ack'),
-  showTitle: () => { if (sess) sess.transition('title', 'menu'); ui.titleScreen(prog); },
+  showTitle: () => { if (sess) sess.transition('title', 'menu'); ui.titleScreen(prog, { hasSave: hasSavedGame() }); },
   showModeSelect: () => ui.modeSelectScreen(),
   showJourney: () => ui.journeyScreen(prog, journey),
   showProgression: () => ui.progressionScreen(prog),
@@ -183,9 +191,14 @@ const actions = {
   },
   hint: () => {
     if (!sess) return;
-    const v = validateLevel(sess.session.level);
-    const remaining = v.solution ? v.solution.filter(p => !sess.session.state.pulledPins.includes(p)) : [];
-    const hint = remaining.length ? `Try pin ${remaining[0]} — it is part of a winning line.` : 'No hint available.';
+    // Solve from the CURRENT position, not the authored par solution: after a
+    // deviation the old solution pins may no longer win, and a hint that names
+    // a losing pin is worse than none.
+    const res = solveState(sess.session.state);
+    const hint = res.solvable
+      ? `Try pin ${res.first} — it is on a winning line from here.`
+      : res.reason === 'node-budget-exceeded' ? 'Hint search limit reached — try another move.'
+      : 'No winning line from this position — undo (practice) or retry.';
     refreshHud(hint);
   },
   pause: () => {
@@ -201,7 +214,7 @@ const actions = {
     ui.clearOverlay();
     refreshHud();
   },
-  retry: () => { const lv = sess.session.level, m = sess.session.mode; startLevel(lv, m, lesson); },
+  retry: () => { const lv = sess.session.level, m = sess.session.mode; startLevel(lv, m, m === 'tutorial' ? lesson : null); },
   next: () => {
     if (sess.session.mode === 'tutorial') {
       const tut = getTutorial();
@@ -216,18 +229,46 @@ const actions = {
   },
   quitToTitle: () => {
     if (sess) { sess.saveSnapshot('rescue-pins:last'); sess.transition('title', 'quit'); }
-    ui.titleScreen(prog);
+    ui.titleScreen(prog, { hasSave: hasSavedGame() });
   },
   showHelp: () => ui.helpScreen({ confirm: 'Enter' }),
   backFromHelp: () => ui.pauseScreen(),
-  setVolume: (bus, v) => { settings.audio[bus] = v; audio.applyVolumes(); saveSettings(settings); },
-  setMuted: (m) => { audio.setMuted(m); saveSettings(settings); },
-  setCaptions: (c) => { settings.captions = c; saveSettings(settings); },
-  setTier: (t) => { settings.graphics.tier = t; if (view) view.applyTier(t === 'auto' ? 'high' : t); saveSettings(settings); },
-  setPalette: (p) => { settings.graphics.palette = p; saveSettings(settings); rebuildView(); },
-  setReducedMotion: (m) => { settings.graphics.reducedMotion = m; saveSettings(settings); rebuildView(); },
-  setHighContrast: (hc) => { settings.graphics.highContrast = hc; document.body.classList.toggle('hc', hc); saveSettings(settings); },
-  setTextSize: (t) => { settings.graphics.textSize = t; document.body.classList.toggle('big-text', t === 'large'); saveSettings(settings); },
+  setVolume: (bus, v) => { settings.audio[bus] = v; audio.applyVolumes(); saveSettings(settings, storage); },
+  setMuted: (m) => { audio.setMuted(m); saveSettings(settings, storage); },
+  setCaptions: (c) => { settings.captions = c; saveSettings(settings, storage); },
+  setTier: (t) => { settings.graphics.tier = t; if (view) view.applyTier(t === 'auto' ? 'high' : t); saveSettings(settings, storage); },
+  setPalette: (p) => { settings.graphics.palette = p; saveSettings(settings, storage); rebuildView(); },
+  setReducedMotion: (m) => { settings.graphics.reducedMotion = m; saveSettings(settings, storage); rebuildView(); },
+  setHighContrast: (hc) => { settings.graphics.highContrast = hc; document.body.classList.toggle('hc', hc); saveSettings(settings, storage); },
+  setTextSize: (t) => { settings.graphics.textSize = t; document.body.classList.toggle('big-text', t === 'large'); saveSettings(settings, storage); },
+  setLeftHanded: (v) => { settings.controls.leftHanded = v; document.body.classList.toggle('lefty', v); saveSettings(settings, storage); },
+  continueSaved: () => {
+    let doc = null;
+    try { doc = JSON.parse(storage.getItem('rescue-pins:last') || 'null'); } catch { doc = null; }
+    const lv = doc && findLevel(doc.levelId);
+    if (!lv) { ui.error('No saved game to continue.'); return; }
+    sess = createSession({ storage, level: lv, mode: doc.mode || 'journey', now: Date.now() });
+    if (!sess.loadSnapshot('rescue-pins:last', findLevel)) {
+      sess = null;
+      ui.error('Saved game was corrupted and could not be restored.');
+      return;
+    }
+    cmdCounter = 0;
+    lesson = doc.mode === 'tutorial' ? getTutorial().find(t => t.level.id === lv.id) : null;
+    selectedPin = null;
+    if (view) view.build(sess.session.state, sess.session.level, themeOf(sess.session.level));
+    const term = sess.isTerminal();
+    if (term.done) {
+      sess.transition('results', term.reason);
+      ui.resultsScreen({ won: term.won, reason: term.reason, score: sess.score(),
+                         moves: sess.session.state.stats.moves, par: sess.session.state.par,
+                         dailySubmit: null });
+    } else {
+      sess.transition('active', 'resume-saved-game');
+      ui.clearOverlay();
+      refreshHud();
+    }
+  },
 };
 
 function rebuildView() {
@@ -266,9 +307,17 @@ function wirePointer() {
 
 // ---- keyboard ----
 window.addEventListener('keydown', (e) => {
-  if (!sess || (sess.session.screen !== 'active' && sess.session.screen !== 'tutorial')) {
-    if (e.key === 'Escape' && sess && sess.session.screen === 'paused') actions.resume();
-    return;
+  if (!sess) return;
+  const screen = sess.session.screen;
+  if (screen === 'paused') { if (e.key === 'Escape') actions.resume(); return; }
+  if (screen !== 'active' && screen !== 'tutorial') return;
+  // Pause/undo/hint/camera must stay reachable even when no pins remain
+  // (e.g. a dead-end board in practice, where undo is the only way back).
+  switch (e.key) {
+    case 'Escape': actions.pause(); return;
+    case 'u': case 'U': actions.undo(); return;
+    case 'h': case 'H': actions.hint(); return;
+    case 'c': case 'C': if (view) view.resize(); audio.play('ack'); return;
   }
   const legal = sess.legalActions().map(a => a.pinId);
   if (!legal.length) return;
@@ -278,10 +327,6 @@ window.addEventListener('keydown', (e) => {
     case 'ArrowLeft': case 'ArrowUp': case 'a': case 'w': move(-1); e.preventDefault(); break;
     case 'ArrowRight': case 'ArrowDown': case 'd': case 's': move(1); e.preventDefault(); break;
     case 'Enter': case ' ': if (selectedPin) { pullPin(selectedPin); e.preventDefault(); } break;
-    case 'Escape': actions.pause(); break;
-    case 'u': case 'U': actions.undo(); break;
-    case 'h': case 'H': actions.hint(); break;
-    case 'c': case 'C': if (view) view.resize(); audio.play('ack'); break;
   }
 });
 
@@ -312,6 +357,7 @@ async function boot() {
   ui = createUI(root, actions, settings);
   document.body.classList.toggle('hc', !!settings.graphics.highContrast);
   document.body.classList.toggle('big-text', settings.graphics.textSize === 'large');
+  document.body.classList.toggle('lefty', !!settings.controls.leftHanded);
 
   view = createRenderer(ui.canvasHost, { settings });
   if (!view) {
@@ -333,7 +379,7 @@ async function boot() {
   window.addEventListener('pointerdown', kickAudio);
   window.addEventListener('keydown', kickAudio);
 
-  ui.titleScreen(prog);
+  ui.titleScreen(prog, { hasSave: hasSavedGame() });
   requestAnimationFrame(loop);
 }
 

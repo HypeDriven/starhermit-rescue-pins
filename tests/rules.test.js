@@ -5,7 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createInitialState, legalActions, explainIllegal, applyCommand, isTerminal,
          scoreBreakdown, serialize, deserialize, hashState, makeStreams, mulberry32,
-         solveLevel, RULES_VERSION } from '../js/rules.js';
+         solveLevel, solveState, RULES_VERSION } from '../js/rules.js';
 
 const L = (over = {}) => ({
   id: 't', seed: 7, cols: 2, rows: 3, par: 2, contentVersion: 1,
@@ -163,4 +163,27 @@ test('solver bound: impossible level reports exhaustion, does not hang', () => {
                   pins: [{ id: 'p1', a: [0, 0], b: [0, 1] }] }); // water can never cross to col 1
   const res = solveLevel(lvl);
   assert.equal(res.solvable, false);
+});
+
+test('solveState finds a winning first move from a deviated mid-game state', () => {
+  // Deviating from par (pulling px first, which changes nothing immediately)
+  // must still yield a truthful hint: greedily following solveState wins.
+  let s = S();
+  s = applyCommand(s, { type: 'pull', pinId: 'px' }).state;
+  assert.equal(s.status, 'active');
+  for (let steps = 0; steps < 8 && s.status === 'active'; steps++) {
+    const res = solveState(s);
+    assert.ok(res.solvable, 'hint claims no win from a winnable position');
+    s = applyCommand(s, { type: 'pull', pinId: res.first }).state;
+  }
+  assert.equal(s.status, 'won');
+});
+
+test('solveState reports no winning line from a lost position', () => {
+  const lvl = L(); // lava above hero's shaft: releasing it kills the hero
+  let s = S(lvl);
+  s = applyCommand(s, { type: 'pull', pinId: 'pl' }).state;
+  s = applyCommand(s, { type: 'pull', pinId: 'pl2' }).state;
+  assert.equal(s.status, 'lost');
+  assert.equal(solveState(s).solvable, false);
 });

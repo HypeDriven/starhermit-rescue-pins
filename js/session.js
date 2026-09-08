@@ -64,6 +64,12 @@ export function createSession(opts) {
       session.invalidCount++;
       const res = applyCommand(session.state, cmd); // counts invalid, keeps state coherent
       session.state = res.state;
+      // Log invalid attempts too: stats.invalid feeds the score and the state
+      // hash, so a replay that omitted them could never reproduce finalHash —
+      // every legitimate daily run with a rejected tap would fail verification.
+      session.commandLog.push({ id: cmd.id, cmd: { type: cmd.type, pinId: cmd.pinId },
+                                invalid: true, hashAfter: hashState(res.state) });
+      session.lastEvents = res.events;
       return { ok: false, error: why };
     }
     const res = applyCommand(session.state, cmd);
@@ -111,7 +117,8 @@ export function createSession(opts) {
       initialHash: session.initialHash,
       startedAt: session.startedAt,
       elapsedMs: session.elapsedMs | 0,
-      commands: session.commandLog.map(e => ({ id: e.id, type: e.cmd.type, pinId: e.cmd.pinId, hashAfter: e.hashAfter })),
+      commands: session.commandLog.map(e => ({ id: e.id, type: e.cmd.type, pinId: e.cmd.pinId,
+                                               invalid: !!e.invalid, hashAfter: e.hashAfter })),
       finalHash: hashState(session.state),
       terminal: { status: session.state.status, reason: session.state.reason },
       scoreBreakdown: scoreBreakdown(session.state),
@@ -134,7 +141,13 @@ export function createSession(opts) {
       if (!c || typeof c.id !== 'string' || seen.has(c.id)) return { valid: false, error: 'bad-or-duplicate-command-id' };
       seen.add(c.id);
       const res = applyCommand(s, { type: c.type, pinId: c.pinId });
-      if (res.error) return { valid: false, error: 'illegal-command:' + res.error };
+      if (res.error) {
+        // invalid attempts are legal log entries only when flagged; they still
+        // advance stats.invalid deterministically, so hashes stay reproducible
+        if (!c.invalid) return { valid: false, error: 'illegal-command:' + res.error };
+      } else if (c.invalid) {
+        return { valid: false, error: 'invalid-flag-mismatch' };
+      }
       s = res.state;
       if (c.hashAfter && c.hashAfter !== hashState(s)) return { valid: false, error: 'state-hash-mismatch' };
     }

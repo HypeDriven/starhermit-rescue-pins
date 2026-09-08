@@ -1,13 +1,13 @@
 {
   "name": "rescue-pins",
   "version": "1.0.0",
-  "description": "Rescue Pins — sequencing puzzle (browser + Node ESM)",
+  "description": "Rescue Pins \u2014 sequencing puzzle (browser + Node ESM)",
   "type": "module",
   "scripts": {
     "test": "node --test tests/*.test.js",
     "start": "node server.js"
   },
-  "license": "ISC",
+  "license": "PolyForm-Noncommercial-1.0.0",
   "dependencies": {
     "three": "^0.185.1"
   },

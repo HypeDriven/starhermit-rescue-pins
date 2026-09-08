@@ -118,6 +118,8 @@ async function desktopPass() {
     // settings live inside the pause screen: exercise a toggle and a select
     await page.locator('.rp-settings-section input[type="checkbox"]').first().check();
     await page.locator('select[aria-label="Palette"]').selectOption('colorblind');
+    // regression: this toggle used to call a missing action and throw
+    await page.getByLabel(/Left-handed tray/).check();
     await page.screenshot({ path: shot('settings') });
     await page.getByRole('button', { name: 'Rule cards' }).click();
     await page.waitForSelector('.rp-overlay:not([hidden]) .rp-panel h2:text("How to play")');
@@ -161,6 +163,14 @@ async function desktopPass() {
     await page.screenshot({ path: shot('back-to-title') });
   });
 
+  await step('[desktop] continue saved game from title', async () => {
+    await page.getByRole('button', { name: 'Continue saved game' }).click();
+    await waitActive(page);
+    const stage = await page.locator('.rp-rail-left .rp-rail-title').innerText();
+    if (!stage) throw new Error('no level restored after continue');
+    await page.screenshot({ path: shot('continued') });
+  });
+
   await context.close();
   throwIfErrors(errors, 'desktop');
 }
@@ -184,6 +194,10 @@ async function mobilePass() {
     await startStage1(page, shot);
     await page.screenshot({ path: shot('active') });
   });
+
+  await page.setViewportSize({ width: 844, height: 390 });
+  await page.waitForSelector('.rp-pin-list button', { state: 'visible' });
+  await page.setViewportSize({ width: 390, height: 844 });
 
   await step('[mobile] pause + resume via tray buttons', async () => {
     await page.getByRole('button', { name: /Pause/ }).click();

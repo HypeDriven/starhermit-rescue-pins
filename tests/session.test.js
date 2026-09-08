@@ -124,3 +124,43 @@ test('settings and progression persistence with checksums', () => {
   saveProgression(p, storage);
   assert.ok(loadProgression(storage).completed['journey-1']);
 });
+
+test('invalid attempts are logged so replay verification still passes', () => {
+  const lvl = tut1();
+  const s = createSession({ level: lvl, mode: 'daily', storage: memStorage() });
+  s.transition('active', 'test');
+  const bad = s.dispatch({ id: 'x1', type: 'pull', pinId: 'nope' });
+  assert.equal(bad.error, 'pin-not-found');
+  assert.equal(s.session.state.stats.invalid, 1);
+  assert.ok(s.session.commandLog.some(e => e.invalid));
+  s.dispatch({ id: 'c1', type: 'pull', pinId: 'p1' });
+  assert.equal(s.session.state.status, 'won');
+  const env = s.replayEnvelope();
+  const gate = createSession({ level: lvl, mode: 'daily', storage: memStorage() });
+  const ok = gate.verifyReplay(env, lvl);
+  assert.ok(ok.valid, ok.error); // invalid attempts reproduce deterministically
+  assert.equal(ok.score.invalidPenalty, 25);
+  // an illegal command WITHOUT the invalid flag is still rejected as forgery
+  const forged = structuredClone(env);
+  forged.commands[0].invalid = false;
+  assert.equal(gate.verifyReplay(forged, lvl).error, 'illegal-command:pin-not-found');
+  // a valid command falsely flagged invalid is rejected too
+  const forged2 = structuredClone(env);
+  forged2.commands[1].invalid = true;
+  assert.equal(gate.verifyReplay(forged2, lvl).error, 'invalid-flag-mismatch');
+});
+
+test('undo rebuilds through logged invalid attempts deterministically', () => {
+  const lvl = getTutorial()[1].level;
+  const s = createSession({ level: lvl, mode: 'practice', storage: memStorage() });
+  s.transition('active', 'test');
+  s.dispatch({ id: 'bad', type: 'pull', pinId: 'nope' }); // logged invalid
+  s.dispatch({ id: 'a', type: 'pull', pinId: 'pa' });
+  const h1 = s.replayEnvelope().finalHash;
+  s.dispatch({ id: 'b', type: 'pull', pinId: 'pb' });
+  assert.equal(s.session.state.status, 'won');
+  s.transition('active', 'test');
+  assert.ok(s.undo().ok);
+  assert.equal(s.replayEnvelope().finalHash, h1); // invalid penalty survives undo
+  assert.equal(s.session.state.stats.invalid, 1);
+});

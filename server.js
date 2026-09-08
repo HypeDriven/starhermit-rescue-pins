@@ -7,10 +7,11 @@ import { existsSync } from 'node:fs';
 import { join, normalize, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createSession } from './js/session.js';
-import { getDailyLevel, findLevel, CONTENT_VERSION } from './js/content.js';
+import { getDailyLevel, findLevel, dailySeedForDate, CONTENT_VERSION } from './js/content.js';
 
 const ROOT = fileURLToPath(new URL('.', import.meta.url));
-const DATA_DIR = join(ROOT, 'data');
+// overridable so tests never pollute the shipped leaderboard file
+const DATA_DIR = process.env.RESCUE_PINS_DATA_DIR || join(ROOT, 'data');
 const PORT = parseInt(process.env.PORT || '8000', 10);
 
 const MIME = {
@@ -63,6 +64,14 @@ function plausible(envelope, score) {
   return true;
 }
 
+// Only the current UTC day's seed (plus a one-day grace for runs that started
+// before midnight) may be submitted; otherwise future dailies could be
+// pre-solved and ancient days farmed for the ranked board.
+function dailySeedAccepted(seed) {
+  const today = dailySeedForDate(new Date());
+  return seed === today || seed === today - 1;
+}
+
 async function handleApi(req, res, url) {
   if (url.pathname === '/api/v1/time' && req.method === 'GET') {
     return send(res, 200, { serverTime: Date.now(), contentVersion: CONTENT_VERSION });
@@ -76,6 +85,7 @@ async function handleApi(req, res, url) {
     if (!envelope || typeof envelope !== 'object') return err(res, 400, 'missing-envelope');
     if (envelope.contentVersion !== CONTENT_VERSION) return err(res, 409, 'stale-content-version');
     if (!Number.isInteger(envelope.seed) || envelope.seed < 0) return err(res, 400, 'bad-seed');
+    if (!dailySeedAccepted(envelope.seed >>> 0)) return err(res, 422, 'stale-or-future-daily-seed');
     const level = getDailyLevel(envelope.seed >>> 0);
     if (level.excluded) return err(res, 422, 'day-excluded-from-ranking');
     // authoritative replay through the same rules the client ships
@@ -110,6 +120,7 @@ async function handleApi(req, res, url) {
       if (typeof name !== 'string' || name.trim().length === 0 || name.length > 24) return err(res, 400, 'bad-name');
       if (contentVersion !== CONTENT_VERSION) return err(res, 409, 'stale-content-version');
       if (!Number.isInteger(seed) || seed < 0) return err(res, 400, 'bad-seed');
+      if (!dailySeedAccepted(seed >>> 0)) return err(res, 422, 'stale-or-future-daily-seed');
       // idempotent: same submission id returns the stored result
       const dupe = lb.entries.find(e => e.submissionId === submissionId);
       if (dupe) return send(res, 200, { stored: true, duplicate: true, entry: dupe });
@@ -137,7 +148,9 @@ async function handleApi(req, res, url) {
 }
 
 async function serveStatic(req, res, url) {
-  let path = decodeURIComponent(url.pathname);
+  let path;
+  try { path = decodeURIComponent(url.pathname); } catch { return err(res, 400, 'bad-path'); }
+  if (path.split(/[\\/]/).some(p => p.startsWith('.'))) return err(res, 403, 'forbidden');
   if (path === '/') path = '/index.html';
   const full = normalize(join(ROOT, path));
   if (!full.startsWith(ROOT)) return err(res, 403, 'forbidden');

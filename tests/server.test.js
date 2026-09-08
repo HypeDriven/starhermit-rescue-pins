@@ -3,9 +3,16 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createServer } from '../server.js';
-import { createSession } from '../js/session.js';
-import { getDailyLevel, dailySeedForDate } from '../js/content.js';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+// point the server at a throwaway data dir BEFORE importing it, so test
+// submissions never pollute the shipped data/leaderboard.json
+process.env.RESCUE_PINS_DATA_DIR = mkdtempSync(join(tmpdir(), 'rescue-pins-test-'));
+const { createServer } = await import('../server.js');
+const { createSession } = await import('../js/session.js');
+const { getDailyLevel, dailySeedForDate } = await import('../js/content.js');
 
 async function withServer(fn) {
   const srv = createServer();
@@ -38,7 +45,7 @@ test('GET /api/v1/time', async () => {
 
 test('daily verify: valid replay accepted, tampered rejected', async () => {
   await withServer(async (base) => {
-    const seed = dailySeedForDate(new Date('2026-03-01T10:00:00Z'));
+    const seed = dailySeedForDate(new Date());
     const level = getDailyLevel(seed);
     if (level.excluded) return; // excluded day: nothing to verify
     // build a genuinely winning replay client-side
@@ -73,12 +80,21 @@ test('daily verify: valid replay accepted, tampered rejected', async () => {
       body: JSON.stringify({ envelope: stale }),
     });
     assert.equal(res.status, 409);
+    // a seed from another day (not today/yesterday) is not ranked
+    const oldDay = structuredClone(env);
+    oldDay.seed = seed - 7;
+    res = await fetch(base + '/api/v1/daily/verify', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ envelope: oldDay }),
+    });
+    assert.equal(res.status, 422);
+    assert.equal((await res.json()).error, 'stale-or-future-daily-seed');
   });
 });
 
 test('leaderboard: validated POST, idempotent duplicate, GET filters', async () => {
   await withServer(async (base) => {
-    const seed = dailySeedForDate(new Date('2026-03-02T10:00:00Z'));
+    const seed = dailySeedForDate(new Date());
     const level = getDailyLevel(seed);
     if (level.excluded) return;
     const s = createSession({ level, mode: 'daily', now: Date.now() });

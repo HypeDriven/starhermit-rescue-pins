@@ -267,6 +267,29 @@ export function deserialize(json) {
 }
 
 // ---------- solver (used by content validator and hints) ----------
+// BFS from an arbitrary mid-game state; returns the first pin of a winning
+// line so hints stay truthful even after the player deviates from par.
+export function solveState(startState, maxNodes = 60000) {
+  const seen = new Set([hashState(startState)]);
+  const queue = [{ state: startState, first: null }];
+  let nodes = 0;
+  while (queue.length) {
+    const { state, first } = queue.shift();
+    if (++nodes > maxNodes) return { solvable: false, reason: 'node-budget-exceeded' };
+    for (const act of legalActions(state)) {
+      const { state: next, error } = applyCommand(state, { type: 'pull', pinId: act.pinId });
+      if (error) continue;
+      const h = hashState(next);
+      if (seen.has(h)) continue;
+      seen.add(h);
+      const f = first || act.pinId;
+      if (next.status === 'won') return { solvable: true, first: f, nodes };
+      if (next.status === 'active') queue.push({ state: next, first: f });
+    }
+  }
+  return { solvable: false, reason: 'exhausted' };
+}
+
 export function solveLevel(levelDef, maxNodes = 60000) {
   const start = createInitialState(levelDef, makeStreams(levelDef.seed >>> 0));
   const seen = new Set([hashState(start)]);

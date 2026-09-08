@@ -73,12 +73,15 @@ export function createUI(root, actions, settings) {
     if (first) first.focus();
   }
 
-  function titleScreen(prog) {
+  function titleScreen(prog, opts) {
     const p = el('section', 'rp-panel rp-title');
     p.appendChild(el('h1', '', 'Rescue Pins'));
     p.appendChild(el('p', 'rp-tag', 'Pull the pins. Spare the villagers.'));
     const play = button('▶ Play', 'rp-btn-primary', () => actions.showModeSelect());
     p.appendChild(play);
+    if (opts && opts.hasSave) {
+      p.appendChild(button('Continue saved game', '', () => actions.continueSaved()));
+    }
     const row = el('div', 'rp-row');
     row.append(
       button('Daily Challenge', '', () => actions.startDaily()),

@@ -29,6 +29,7 @@
   .rp-canvas-host canvas { width: 100%; height: 100%; display: block; touch-action: none; }
   .rp-tray { display: flex; gap: 8px; justify-content: center; padding: 8px;
     padding-bottom: calc(8px + var(--sab)); background: var(--panel); flex-wrap: wrap; }
+  body.lefty .rp-tray { flex-direction: row-reverse; }
   .rp-btn { min-height: 44px; min-width: 44px; padding: 10px 16px; margin: 4px;
     background: var(--btn); color: var(--fg); border: 2px solid transparent; border-radius: 10px;
     font: inherit; cursor: pointer; }
@@ -76,8 +77,8 @@
   }
   /* landscape mobile: narrow status rail */
   @media (max-height: 480px) and (orientation: landscape) {
-    .rp-shell { grid-template-columns: 160px 1fr; grid-template-rows: 1fr; }
-    .rp-rail-right { display: none; }
+    .rp-shell { grid-template-columns: 130px minmax(0, 1fr) 140px; grid-template-rows: 1fr; }
+    .rp-rail-right { display: block; max-height: 100vh; overflow-y: auto; }
   }
 </style>
 </head>
