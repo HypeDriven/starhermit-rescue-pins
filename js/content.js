@@ -7,11 +7,13 @@ import { CONTENT_VERSION, makeStreams, mulberry32, solveLevel, createInitialStat
 export { CONTENT_VERSION };
 
 export const THEMES = [
-  { id: 'emerald-keep',   name: 'Emerald Keep',   sky: 0x1d3b2a, stone: 0x6f7d6a, accent: 0x7fe0a8 },
-  { id: 'amber-spires',   name: 'Amber Spires',   sky: 0x3b2a1d, stone: 0x8a6f52, accent: 0xffc46b },
-  { id: 'frost-halls',    name: 'Frost Halls',    sky: 0x1d2a3b, stone: 0x6a7d8a, accent: 0x9fd8ff },
-  { id: 'ember-depths',   name: 'Ember Depths',   sky: 0x2e1a1a, stone: 0x7d5a52, accent: 0xff9a6b },
-  { id: 'moonlit-towers', name: 'Moonlit Towers', sky: 0x241d3b, stone: 0x6a628a, accent: 0xc4a8ff },
+  // dark skies + pale stone: the castle must read as a bright cutaway against
+  // the backdrop, and chamber contents against the stone (design pillar 1).
+  { id: 'emerald-keep',   name: 'Emerald Keep',   sky: 0x0d1f16, stone: 0x9aa892, accent: 0x7fe0a8 },
+  { id: 'amber-spires',   name: 'Amber Spires',   sky: 0x1f150c, stone: 0xb59a7a, accent: 0xffc46b },
+  { id: 'frost-halls',    name: 'Frost Halls',    sky: 0x0d1620, stone: 0x94a8b8, accent: 0x9fd8ff },
+  { id: 'ember-depths',   name: 'Ember Depths',   sky: 0x1a0d0d, stone: 0xa88478, accent: 0xff9a6b },
+  { id: 'moonlit-towers', name: 'Moonlit Towers', sky: 0x120d20, stone: 0x9a90b8, accent: 0xc4a8ff },
 ];
 
 // ---------- level helpers ----------

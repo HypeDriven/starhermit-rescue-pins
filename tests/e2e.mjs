@@ -57,6 +57,8 @@ async function startStage1(page, shot) {
   await page.getByRole('button', { name: /^Journey/ }).click();
   const stages = await page.locator('.rp-stage-grid button').count();
   if (stages !== 40) throw new Error(`expected 40 journey stages, got ${stages}`);
+  const mastery = await page.locator('.rp-stage-grid button', { hasText: '♛' }).count();
+  if (mastery !== 5) throw new Error(`expected 5 mastery-marked stages, got ${mastery}`);
   await page.screenshot({ path: shot('journey') });
   await page.locator('.rp-stage-grid button').first().click();
   await page.waitForSelector('.rp-countdown', { timeout: 5000 });
@@ -89,6 +91,10 @@ async function expectResults(page, shot) {
   if (!/Rescued!/.test(headline)) throw new Error('expected a win, got: ' + headline);
   const total = await page.locator('.rp-score-list .rp-total').innerText();
   if (!/Total: \d+/.test(total)) throw new Error('score breakdown missing total: ' + total);
+  const panelText = await page.locator('.rp-overlay:not([hidden]) .rp-panel').innerText();
+  if (!/achievements unlocked/i.test(panelText) || !/First Rescue/.test(panelText)) {
+    throw new Error('results missing achievement unlock section: ' + panelText);
+  }
   console.log('  headline:', headline, '|', total);
   await page.screenshot({ path: shot('results') });
 }
@@ -169,6 +175,20 @@ async function desktopPass() {
     const stage = await page.locator('.rp-rail-left .rp-rail-title').innerText();
     if (!stage) throw new Error('no level restored after continue');
     await page.screenshot({ path: shot('continued') });
+  });
+
+  await step('[desktop] profile shows achievements + mastery track', async () => {
+    await page.getByRole('button', { name: /Pause/ }).click();
+    await page.waitForSelector('.rp-overlay:not([hidden]) .rp-panel h2:text("Paused")');
+    await page.getByRole('button', { name: 'Save & quit to title' }).click();
+    await page.waitForSelector('.rp-overlay:not([hidden]) .rp-title');
+    await page.getByRole('button', { name: 'Profile & Progress' }).click();
+    await page.waitForSelector('.rp-overlay:not([hidden]) .rp-panel h2:text("Profile & Progress")');
+    const body = await page.locator('.rp-overlay:not([hidden]) .rp-panel').innerText();
+    if (!/Mastery track: \d\/5/.test(body)) throw new Error('mastery track line missing: ' + body);
+    if (!/First Rescue/.test(body)) throw new Error('achievement list missing in profile: ' + body);
+    await page.screenshot({ path: shot('profile') });
+    await page.getByRole('button', { name: 'Back' }).click();
   });
 
   await context.close();

@@ -8,68 +8,107 @@
 <meta name="description" content="Pull pins in sequence to route water, isolate lava, and rescue the villagers.">
 <style>
   :root {
-    --bg: #14171d; --panel: #1f242e; --fg: #e8ecf2; --dim: #9aa4b2;
-    --accent: #7fe0a8; --danger: #ff6b5e; --btn: #2a3140; --btn-hi: #3a4356;
+    --bg: #0e1115; --panel: #1b2029; --edge: #3f4a5c; --fg: #f3f6fa; --dim: #b9c3d0;
+    --accent: #8cf0b9; --accent-ink: #0c2418; --danger: #ff7d70; --danger-ink: #2a0c08;
+    --btn: #313b4c; --btn-hi: #465268; --btn-edge: #5d6a80; --focus: #ffd66b;
     --sat: env(safe-area-inset-top, 0px); --sab: env(safe-area-inset-bottom, 0px);
     --sal: env(safe-area-inset-left, 0px); --sar: env(safe-area-inset-right, 0px);
+    color-scheme: dark;
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
     font: 16px/1.45 system-ui, sans-serif; }
   body.big-text { font-size: 20px; }
-  body.hc { --bg: #000; --panel: #111; --fg: #fff; --dim: #ccc; --accent: #00ff88; --btn: #222; --btn-hi: #444; }
+  body.hc { --bg: #000; --panel: #000; --edge: #fff; --fg: #fff; --dim: #e6e6e6; --accent: #00ff88; --accent-ink: #000;
+    --btn: #000; --btn-hi: #333; --btn-edge: #fff; --danger: #ff5540; --danger-ink: #000; --focus: #ffff00; }
   .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   #app, .rp-root { height: 100%; display: flex; flex-direction: column; }
-  .rp-shell { flex: 1; display: grid; grid-template-columns: 240px 1fr 240px; min-height: 0;
+  .rp-shell { flex: 1; display: grid; grid-template-columns: 240px 1fr 240px; grid-template-rows: minmax(0, 1fr); min-height: 0;
     padding: var(--sat) var(--sar) 0 var(--sal); }
-  .rp-rail { padding: 12px; overflow-y: auto; background: var(--panel); }
-  .rp-rail-title { font-size: 1rem; margin: 0 0 8px; }
-  .rp-stage { position: relative; min-width: 0; }
-  .rp-canvas-host { position: absolute; inset: 0; overflow: hidden; }
-  .rp-canvas-host canvas { width: 100%; height: 100%; display: block; touch-action: none; }
+  .rp-rail { padding: 12px 14px; overflow-y: auto; background: var(--panel); }
+  .rp-rail-left { border-right: 1px solid var(--edge); }
+  .rp-rail-right { border-left: 1px solid var(--edge); }
+  .rp-rail-title { font-size: .85rem; text-transform: uppercase; letter-spacing: .08em; color: var(--accent); margin: 0 0 10px; }
+  .rp-rail p { margin: 0 0 10px; }
+  .rp-objective { font-weight: 600; }
+  .rp-stat { display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px solid var(--edge); padding-bottom: 6px; }
+  .rp-stat b { font-variant-numeric: tabular-nums; }
+  .rp-stage { position: relative; min-width: 0; background: #000; display: flex; flex-direction: column; }
+  .rp-canvas-host { position: relative; flex: 1; min-height: 0; overflow: hidden; }
+  .rp-canvas-host canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
   .rp-tray { display: flex; gap: 8px; justify-content: center; padding: 8px;
-    padding-bottom: calc(8px + var(--sab)); background: var(--panel); flex-wrap: wrap; }
+    padding-bottom: calc(8px + var(--sab)); background: var(--panel); border-top: 1px solid var(--edge); flex-wrap: wrap; }
   body.lefty .rp-tray { flex-direction: row-reverse; }
   .rp-btn { min-height: 44px; min-width: 44px; padding: 10px 16px; margin: 4px;
-    background: var(--btn); color: var(--fg); border: 2px solid transparent; border-radius: 10px;
-    font: inherit; cursor: pointer; }
-  .rp-btn:hover { background: var(--btn-hi); }
-  .rp-btn:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
-  .rp-btn-primary { background: var(--accent); color: #10241a; font-weight: 700; }
-  .rp-btn-quiet { background: transparent; border-color: var(--dim); }
-  .rp-btn-danger { background: var(--danger); color: #2a0c08; }
+    background: var(--btn); color: var(--fg); border: 2px solid var(--btn-edge); border-radius: 10px;
+    font: inherit; font-weight: 600; cursor: pointer; }
+  .rp-btn:hover { background: var(--btn-hi); border-color: var(--fg); }
+  .rp-btn:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+  .rp-btn-primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+  .rp-btn-primary:hover { background: #b2ffd3; border-color: #fff; }
+  .rp-btn-quiet { background: transparent; border-color: var(--btn-edge); }
+  .rp-btn-danger { background: var(--danger); color: var(--danger-ink); border-color: var(--danger); }
   .rp-btn-mode { display: block; width: 100%; text-align: left; }
-  .rp-overlay { position: fixed; inset: 0; background: rgba(10,12,16,.72);
+  .rp-btn-mode small { display: block; font-weight: 400; margin-top: 2px; }
+  .rp-btn-primary small { color: var(--accent-ink); }
+  .rp-badge { display: inline-block; font-size: .75rem; padding: 1px 8px; border-radius: 999px; margin-left: 8px;
+    background: var(--accent-ink); color: var(--accent); vertical-align: middle; }
+  .rp-overlay { position: fixed; inset: 0; background: rgba(4,6,9,.8);
     display: flex; align-items: center; justify-content: center; z-index: 10; overflow-y: auto; }
   .rp-overlay[hidden] { display: none; }
-  .rp-panel { background: var(--panel); border-radius: 14px; padding: 20px; max-width: 70ch;
-    width: min(92vw, 640px); max-height: 90vh; overflow-y: auto; }
+  .rp-panel { background: var(--panel); border: 1px solid var(--edge); border-radius: 14px; padding: 22px; max-width: 70ch;
+    width: min(92vw, 640px); max-height: 90vh; overflow-y: auto; box-shadow: 0 18px 50px rgba(0,0,0,.6); }
   .rp-panel h1 { margin: 0 0 4px; }
+  .rp-panel h2 { margin: 0 0 12px; }
   .rp-tag, .rp-dim { color: var(--dim); }
   .rp-row { display: flex; flex-wrap: wrap; gap: 4px; }
   .rp-stage-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 6px; margin: 10px 0; }
-  .rp-stage-done { border-color: var(--accent); }
+  .rp-stage-done { border-color: var(--accent); color: var(--accent); }
   .rp-score-list { list-style: none; padding: 0; }
-  .rp-total { font-weight: 700; margin-top: 6px; }
+  .rp-total { font-weight: 700; margin-top: 6px; font-size: 1.15em; }
   .rp-win { color: var(--accent); } .rp-lose { color: var(--danger); }
-  .rp-settings-sections { display: grid; gap: 8px; }
-  .rp-settings-section { border: 1px solid var(--btn-hi); border-radius: 10px; padding: 8px 12px; }
+  .rp-settings-sections { display: grid; gap: 10px; }
+  .rp-settings-section { border: 1px solid var(--edge); border-radius: 10px; padding: 8px 12px; }
+  .rp-settings-section legend { font-weight: 700; color: var(--accent); padding: 0 6px; }
   .rp-field { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; }
-  .rp-field input[type=range] { flex: 1; max-width: 200px; min-height: 44px; }
-  .rp-pin-list { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
-  .rp-pin-opt.rp-selected { border-color: var(--accent); background: var(--btn-hi); }
+  .rp-field input[type=range] { flex: 1; max-width: 200px; min-height: 44px; accent-color: var(--accent); }
+  .rp-field input[type=checkbox] { width: 22px; height: 22px; accent-color: var(--accent); }
+  .rp-field select { font: inherit; background: var(--btn); color: var(--fg); border: 2px solid var(--btn-edge);
+    border-radius: 8px; padding: 6px 10px; min-height: 40px; }
+  .rp-pin-list { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
+  .rp-pin-opt { border-color: #c9a227; }
+  .rp-pin-opt.rp-selected { border-color: var(--accent); background: var(--btn-hi); box-shadow: inset 0 0 0 1px var(--accent); }
   .rp-rule-cards { display: grid; gap: 8px; }
-  .rp-rule-card { background: var(--btn); border-radius: 10px; padding: 10px 14px; }
-  .rp-rule-card h3 { margin: 0 0 4px; }
+  .rp-rule-card { background: var(--btn); border: 1px solid var(--btn-edge); border-radius: 10px; padding: 10px 14px; }
+  .rp-rule-card h3 { margin: 0 0 4px; color: var(--accent); }
+  .rp-rule-card p { margin: 0; }
   .rp-webgl-fallback { position: absolute; inset: auto 0 0 0; background: var(--danger); color: #000;
     padding: 12px; font-weight: 600; }
-  .rp-hint { color: var(--accent); }
+  .rp-hint { color: var(--accent-ink); background: var(--accent); border-radius: 8px; padding: 8px 10px; font-weight: 600; }
   .rp-countdown h2 { font-size: 3rem; text-align: center; }
+  .rp-kbd { display: inline-block; font: 600 .85em ui-monospace, monospace; padding: 0 6px; border: 1px solid var(--btn-edge);
+    border-bottom-width: 3px; border-radius: 5px; background: var(--btn); color: var(--fg); }
+  /* in-stage coach: first-play guidance + tutorial lesson text (visible, not only in live regions) */
+  .rp-coach { flex-shrink: 0; margin: 0 12px 12px; z-index: 5;
+    display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px;
+    background: rgba(12,16,22,.94); border: 1px solid var(--accent); border-left-width: 6px; border-radius: 12px;
+    box-shadow: 0 8px 30px rgba(0,0,0,.6); }
+  .rp-coach[hidden] { display: none; }
+  .rp-coach-body { flex: 1; min-width: 0; }
+  .rp-coach-step { font-size: .75rem; text-transform: uppercase; letter-spacing: .08em; color: var(--dim); margin: 0 0 2px; }
+  .rp-coach h3 { margin: 0 0 4px; color: var(--accent); font-size: 1.05rem; }
+  .rp-coach p { margin: 0; }
+  .rp-coach-tip { margin-top: 6px !important; color: var(--dim); }
+  .rp-coach .rp-btn { margin: 0; flex-shrink: 0; }
+  body.hc .rp-coach { background: #000; }
   /* compact desktop/tablet: rails collapse */
   @media (max-width: 1023px) {
-    .rp-shell { grid-template-columns: 1fr; grid-template-rows: auto 1fr auto; }
+    .rp-shell { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr) auto; }
     .rp-rail { max-height: 22vh; }
-    .rp-rail-left { order: 0; } .rp-stage { order: 1; min-height: 40vh; } .rp-rail-right { order: 2; }
+    .rp-rail-left { order: 0; border-right: 0; border-bottom: 1px solid var(--edge); }
+    .rp-stage { order: 1; min-height: 40vh; }
+    .rp-rail-right { order: 2; border-left: 0; border-top: 1px solid var(--edge); }
+    .rp-coach { margin: 0 8px 8px; padding: 10px 12px; }
   }
   /* portrait mobile: bottom thumb-zone tray */
   @media (max-width: 640px) and (orientation: portrait) {

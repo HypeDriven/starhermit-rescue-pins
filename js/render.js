@@ -5,15 +5,15 @@ import * as THREE from './three.min.js';
 
 // authored framing constants (no magic offsets scattered through code)
 export const FRAMING = {
-  cellW: 2.2, cellH: 2.0, wall: 0.18, pinLen: 1.6, pinRad: 0.12,
+  cellW: 2.2, cellH: 2.0, wall: 0.18, pinLen: 1.6, pinRad: 0.17,
   viewMargin: 1.35,           // world-units margin around the castle
   camTiltY: -0.32, camDist: 30,
 };
 
 const COLORS = {
-  default:      { water: 0x3f8cff, lava: 0xff5a2a, hero: 0xffe08a, pin: 0xc9a227, glass: 0xbfd8e8, select: 0x7fe0a8, danger: 0xff3b30 },
-  colorblind:   { water: 0x0072b2, lava: 0xd55e00, hero: 0xf0e442, pin: 0xcc79a7, glass: 0xbfd8e8, select: 0x009e73, danger: 0xd55e00 },
-  highcontrast: { water: 0x00bfff, lava: 0xff2200, hero: 0xffffff, pin: 0xffd700, glass: 0x888888, select: 0x00ff88, danger: 0xff0000 },
+  default:      { water: 0x3f8cff, lava: 0xff5a2a, hero: 0xffe08a, pin: 0xe0b530, glass: 0xdceefc, frame: 0xf4f7fa, select: 0x7fe0a8, danger: 0xff3b30 },
+  colorblind:   { water: 0x0072b2, lava: 0xd55e00, hero: 0xf0e442, pin: 0xe08fc0, glass: 0xdceefc, frame: 0xf4f7fa, select: 0x009e73, danger: 0xd55e00 },
+  highcontrast: { water: 0x00bfff, lava: 0xff2200, hero: 0xffffff, pin: 0xffd700, glass: 0xaaaaaa, frame: 0xffffff, select: 0x00ff88, danger: 0xff0000 },
 };
 
 const QUALITY_TIERS = {
@@ -49,9 +49,9 @@ export function createRenderer(container, opts) {
   scene.add(envGroup, gameplayGroup, interactionGroup);
 
   // lighting: one dominant key + soft fill + ambient ground bounce
-  const key = new THREE.DirectionalLight(0xfff2dd, 2.4);
+  const key = new THREE.DirectionalLight(0xfff2dd, 2.8);
   key.position.set(6, 10, 8);
-  const fill = new THREE.HemisphereLight(0xbcd8ff, 0x40342a, 0.9);
+  const fill = new THREE.HemisphereLight(0xcfe0ff, 0x4a4036, 1.2);
   scene.add(key, fill);
 
   container.appendChild(renderer.domElement);
@@ -107,8 +107,13 @@ export function createRenderer(container, opts) {
     scene.fog = new THREE.Fog(themeDef.sky, 30, 60);
 
     const stoneMat = track(new THREE.MeshStandardMaterial({ color: themeDef.stone, roughness: 0.9 }));
-    const glassMat = track(new THREE.MeshPhysicalMaterial({ color: palette.glass, transparent: true, opacity: 0.16, roughness: 0.1, metalness: 0 }));
-    const waterMat = track(new THREE.MeshStandardMaterial({ color: palette.water, roughness: 0.25, emissive: palette.water, emissiveIntensity: 0.25 }));
+    const glassMat = track(new THREE.MeshPhysicalMaterial({ color: palette.glass, transparent: true, opacity: 0.12, roughness: 0.1, metalness: 0, depthWrite: false }));
+    // dark chamber interior: liquids, villagers and pins read against it, and
+    // the pale stone frame reads against the interior — a real cutaway.
+    const interiorMat = track(new THREE.MeshStandardMaterial({ color: new THREE.Color(themeDef.sky).multiplyScalar(0.9), roughness: 1 }));
+    const frameMat = track(new THREE.LineBasicMaterial({ color: palette.frame, transparent: true, opacity: 0.9 }));
+    const slotMat = track(new THREE.MeshStandardMaterial({ color: 0x14100a, roughness: 1 }));
+    const waterMat = track(new THREE.MeshStandardMaterial({ color: palette.water, roughness: 0.25, emissive: palette.water, emissiveIntensity: 0.5 }));
     const lavaMat = track(new THREE.MeshStandardMaterial({ color: palette.lava, roughness: 0.5, emissive: palette.lava, emissiveIntensity: 0.7 }));
     const heroMat = track(new THREE.MeshStandardMaterial({ color: palette.hero, roughness: 0.6 }));
 
@@ -136,8 +141,13 @@ export function createRenderer(container, opts) {
         const pos = cellCenter(c, r, def);
         const group = new THREE.Group();
         group.position.copy(pos);
-        const glass = new THREE.Mesh(track(new THREE.BoxGeometry(FRAMING.cellW - FRAMING.wall, FRAMING.cellH - FRAMING.wall, 1.8)), glassMat);
-        group.add(glass);
+        const glassGeo = track(new THREE.BoxGeometry(FRAMING.cellW - FRAMING.wall, FRAMING.cellH - FRAMING.wall, 1.8));
+        const glass = new THREE.Mesh(glassGeo, glassMat);
+        glass.renderOrder = 2;
+        const interior = new THREE.Mesh(track(new THREE.BoxGeometry(FRAMING.cellW - FRAMING.wall, FRAMING.cellH - FRAMING.wall, 0.1)), interiorMat);
+        interior.position.z = -0.85;
+        const frame = new THREE.LineSegments(track(new THREE.EdgesGeometry(glassGeo)), frameMat);
+        group.add(interior, glass, frame);
         const water = new THREE.Mesh(track(new THREE.BoxGeometry(FRAMING.cellW - 0.5, FRAMING.cellH - 0.6, 1.4)), waterMat);
         const lava = new THREE.Mesh(track(new THREE.BoxGeometry(FRAMING.cellW - 0.5, FRAMING.cellH - 0.6, 1.4)), lavaMat);
         const hero = new THREE.Group();
@@ -161,14 +171,23 @@ export function createRenderer(container, opts) {
       const horizontal = p.a[1] !== p.b[1]; // separates rows -> pin lies horizontally
       const geo = track(new THREE.CylinderGeometry(FRAMING.pinRad, FRAMING.pinRad, FRAMING.pinLen, 10));
       const m = new THREE.Mesh(geo, pinMat);
-      m.position.set(mid.x, mid.y, 0.6);
+      m.position.set(0, 0, 0.6);
+      // dark slot behind the pin so brass stays legible against pale stone
+      const slot = new THREE.Mesh(track(new THREE.BoxGeometry(horizontal ? FRAMING.pinLen + 0.3 : FRAMING.pinRad * 3.2,
+                                                              horizontal ? FRAMING.pinRad * 3.2 : FRAMING.pinLen + 0.3, 0.1)), slotMat);
+      slot.position.set(mid.x, mid.y, 0.3);
+      envGroup.add(slot);
       m.rotation.z = horizontal ? Math.PI / 2 : 0;
       if (!horizontal) m.rotation.z = 0;
       // ring handle
-      const ring = new THREE.Mesh(track(new THREE.TorusGeometry(0.28, 0.07, 8, 16)), pinMat);
-      ring.position.set(mid.x + (horizontal ? FRAMING.pinLen / 2 + 0.2 : 0),
-                        mid.y + (horizontal ? 0 : FRAMING.pinLen / 2 + 0.2), 0.6);
+      const ring = new THREE.Mesh(track(new THREE.TorusGeometry(0.32, 0.09, 8, 16)), pinMat);
+      ring.position.set(horizontal ? FRAMING.pinLen / 2 + 0.2 : 0,
+                        horizontal ? 0 : FRAMING.pinLen / 2 + 0.2, 0.6);
+      // group anchored at the pin's world position so selection/lift poses
+      // and the marker use a real location (children are group-relative)
       const pinGroup = new THREE.Group();
+      pinGroup.position.set(mid.x, mid.y, 0);
+      pinGroup.userData.base = mid.clone();
       pinGroup.add(m, ring);
       pinGroup.userData.pinId = p.id;
       m.userData.pinId = p.id; ring.userData.pinId = p.id;
@@ -178,7 +197,7 @@ export function createRenderer(container, opts) {
 
     // grounded selection marker
     selectionMarker = new THREE.Mesh(
-      track(new THREE.TorusGeometry(0.55, 0.05, 8, 24)),
+      track(new THREE.TorusGeometry(0.5, 0.08, 8, 24)),
       track(new THREE.MeshBasicMaterial({ color: palette.select })));
     selectionMarker.visible = false;
     scene.add(selectionMarker);
@@ -230,13 +249,13 @@ export function createRenderer(container, opts) {
     selectedPinId = pinId;
     for (const [id, g] of pinMeshes) {
       const on = id === pinId;
-      g.position.y = on && !reducedMotion ? 0.25 : 0; // lift pose
+      g.position.y = g.userData.base.y + (on && !reducedMotion ? 0.25 : 0); // lift pose
       g.traverse(o => { if (o.material && o.material.emissive !== undefined) o.material.emissive.setHex(on ? palette.select : 0x000000); });
     }
     if (pinId && pinMeshes.has(pinId)) {
       selectionMarker.visible = true;
-      selectionMarker.position.copy(pinMeshes.get(pinId).position);
-      selectionMarker.position.z = 0.6;
+      selectionMarker.position.copy(pinMeshes.get(pinId).userData.base);
+      selectionMarker.position.z = 0.9;
     } else if (selectionMarker) selectionMarker.visible = false;
   }
 

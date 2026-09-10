@@ -7,6 +7,7 @@ import { createSession, loadSettings, saveSettings, loadProgression, saveProgres
 import { createRenderer } from './render.js';
 import { createUI } from './ui.js';
 import { createAudio } from './audio.js';
+import { ACHIEVEMENTS, achievementByKey, evaluateAchievements } from './achievements.js';
 
 const root = document.getElementById('app');
 const storage = defaultStorage();
@@ -48,6 +49,16 @@ async function submitDaily(envelope, name) {
   } catch { return { ok: false, message: 'Offline — score kept locally only.' }; }
 }
 
+async function fetchDailyBoard(seed) {
+  if (!apiOnline) return null;
+  try {
+    const res = await fetch('/api/v1/leaderboard?seed=' + (seed >>> 0), { signal: AbortSignal.timeout(5000) });
+    if (!res.ok) return null;
+    const body = await res.json();
+    return Array.isArray(body.entries) && body.entries.length ? body.entries.slice(0, 5) : null;
+  } catch { return null; }
+}
+
 // ---- renderer (with WebGL fallback) ----
 let view = null;
 let ui = null;
@@ -72,7 +83,7 @@ function refreshHud(hint) {
   if (selectedPin && !legal.includes(selectedPin)) selectedPin = legal[0] || null;
   if (!selectedPin && legal.length) selectedPin = legal[0];
   ui.hud({
-    title: sess.session.level.name || sess.session.level.id,
+    title: sess.session.level.name || (sess.session.mode === 'tutorial' && lesson ? lesson.title : sess.session.level.id),
     objective: objectiveText(),
     moves: s.stats.moves, par: s.par, moveLimit: s.moveLimit,
     saved: s.stats.savedCount, heroTotal: s.heroTotal,
@@ -84,6 +95,44 @@ function refreshHud(hint) {
   ui.pinSelector(legal, selectedPin);
   ui.updateMirror(s, sess.session.level.name || sess.session.level.id);
   if (view) { view.sync(s); view.select(selectedPin); }
+  ui.coach(coachContent(s, legal));
+}
+
+// ---- first-play coaching ----
+// Shown in the stage until the player has pulled a couple of pins or dismisses
+// it; tutorial lessons always show their lesson text here (the live-region
+// caption alone is invisible to sighted players).
+const TOUCH = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+function controlTip(step) {
+  const pick = TOUCH ? 'Tap a brass pin to select it' : 'Click or hover a brass pin to select it';
+  const confirm = TOUCH ? 'tap it again' : 'click it again or press Enter';
+  switch (step) {
+    case 'select': return `${pick} — or use the buttons under “Pins you can pull”, or the arrow keys.`;
+    case 'pull':   return `Selected. Now ${confirm} to pull it. One press on its button in the list also pulls it.`;
+    case 'flow':   return 'Water falls and spreads sideways: blue water rescues villagers, orange lava is deadly. H = hint · Esc = pause & settings.';
+    default: return '';
+  }
+}
+function coachContent(state, legal) {
+  const active = sess && sess.session.screen === 'active';
+  if (!active) return null;
+  const isTutorial = sess.session.mode === 'tutorial' && lesson;
+  if (prog.coachDone && !isTutorial) return null;
+  let step = null;
+  if (!prog.coachDone) {
+    if (state.stats.moves === 0) step = selectedPin && legal.length ? 'pull' : 'select';
+    else if (state.stats.moves === 1) step = 'flow';
+    else { prog.coachDone = true; saveProgression(prog, storage); }
+  }
+  if (!step && !isTutorial) return null;
+  const stepIdx = { select: 1, pull: 2, flow: 3 }[step];
+  return {
+    step: isTutorial ? `Lesson ${getTutorial().findIndex(t => t.level.id === sess.session.level.id) + 1} of ${getTutorial().length}` : (step ? `How to play · ${stepIdx} of 3` : ''),
+    title: isTutorial ? lesson.title : (step === 'select' ? 'Choose a pin' : step === 'pull' ? 'Pull it' : 'Watch the flow'),
+    text: isTutorial ? lesson.text : controlTip(step),
+    tip: isTutorial && step ? controlTip(step) : '',
+    dismiss: step ? 'Got it' : null,
+  };
 }
 
 function startLevel(level, mode, tutorialLesson) {
@@ -92,6 +141,8 @@ function startLevel(level, mode, tutorialLesson) {
   sess.transition('preparing', 'level-selected');
   cmdCounter = 0;
   selectedPin = null;
+  if (mode !== 'tutorial') lesson = null;
+  ui.coach(null);
   if (view) view.build(sess.session.state, sess.session.level, themeOf(sess.session.level));
   // countdown: 3 short beats, then active
   sess.transition(mode === 'tutorial' ? 'tutorial' : 'countdown', 'start');
@@ -114,6 +165,7 @@ function startLevel(level, mode, tutorialLesson) {
 
 let lesson = null;
 let pendingMode = 'journey';
+let helpReturn = 'pause';
 function announceLesson(l) {
   lesson = l;
   setTimeout(() => ui.error(''), 0);
@@ -145,20 +197,32 @@ async function finishRound(term) {
   const score = sess.score();
   const id = sess.session.level.id;
   let dailySubmit = null;
+  let dailyBoard = null;
+  let newlyUnlocked = [];
   if (term.won) {
     prog.completed[id] = true;
     if (!prog.bestScores[id] || score.total > prog.bestScores[id]) prog.bestScores[id] = score.total;
     if (sess.session.mode === 'tutorial') prog.tutorialDone = true;
+    prog.rescuedTotal = (prog.rescuedTotal | 0) + sess.session.state.stats.savedCount;
+    if (sess.session.mode === 'daily' && sess.session.level.daily) {
+      // one entry per completed UTC day; consecutive days build the streak
+      prog.streakDays = [...new Set([...(prog.streakDays || []), sess.session.level.daily])].sort((a, b) => a - b);
+    }
+    const ev = evaluateAchievements(prog, (lid) => { const l = findLevel(lid); return l && l.theme; });
+    prog.achievements = ev.unlocked; // idempotent: re-storing the full set is safe
+    newlyUnlocked = ev.newly.map(achievementByKey).filter(Boolean);
     saveProgression(prog, storage);
   }
   if (sess.session.mode === 'daily' && term.won) {
     dailySubmit = await submitDaily(sess.replayEnvelope(), 'guest');
+    dailyBoard = await fetchDailyBoard(sess.session.level.daily);
   }
   sess.transition('results', term.reason);
+  ui.coach(null);
   ui.resultsScreen({
     won: term.won, reason: term.reason, score,
     moves: sess.session.state.stats.moves, par: sess.session.state.par,
-    dailySubmit,
+    dailySubmit, achievements: newlyUnlocked, board: dailyBoard,
   });
 }
 
@@ -170,9 +234,18 @@ function hasSavedGame() {
 const actions = {
   uiAck: () => audio.play('ack'),
   showTitle: () => { if (sess) sess.transition('title', 'menu'); ui.titleScreen(prog, { hasSave: hasSavedGame() }); },
-  showModeSelect: () => ui.modeSelectScreen(),
+  showModeSelect: () => ui.modeSelectScreen({ tutorialDone: !!prog.tutorialDone }),
+  dismissCoach: () => { prog.coachDone = true; saveProgression(prog, storage); if (sess && sess.session.screen === 'active') refreshHud(); },
   showJourney: () => ui.journeyScreen(prog, journey),
-  showProgression: () => ui.progressionScreen(prog),
+  showProgression: () => {
+    const unlocked = new Set(prog.achievements || []);
+    const masteryStages = journey.filter(l => l.difficulty && l.difficulty.mastery);
+    ui.progressionScreen(prog, {
+      achievements: ACHIEVEMENTS.map(a => ({ ...a, unlocked: unlocked.has(a.key) })),
+      masteryDone: masteryStages.filter(l => prog.completed[l.id]).length,
+      masteryTotal: masteryStages.length,
+    });
+  },
   startMode: (mode) => {
     pendingMode = mode === 'learn' ? 'tutorial' : mode;
     if (mode === 'learn') { lesson = getTutorial()[0]; startLevel(lesson.level, 'tutorial', lesson); }
@@ -231,8 +304,8 @@ const actions = {
     if (sess) { sess.saveSnapshot('rescue-pins:last'); sess.transition('title', 'quit'); }
     ui.titleScreen(prog, { hasSave: hasSavedGame() });
   },
-  showHelp: () => ui.helpScreen({ confirm: 'Enter' }),
-  backFromHelp: () => ui.pauseScreen(),
+  showHelp: (from) => { helpReturn = from === 'title' ? 'title' : 'pause'; ui.helpScreen({ confirm: 'Enter' }); },
+  backFromHelp: () => { if (helpReturn === 'title') actions.showTitle(); else ui.pauseScreen(); },
   setVolume: (bus, v) => { settings.audio[bus] = v; audio.applyVolumes(); saveSettings(settings, storage); },
   setMuted: (m) => { audio.setMuted(m); saveSettings(settings, storage); },
   setCaptions: (c) => { settings.captions = c; saveSettings(settings, storage); },

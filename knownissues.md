@@ -1,5 +1,72 @@
 # Known Issues / Fix Log
 
+## Spec-gap pass: achievements, daily comparison, mastery track (2026-09-09)
+
+- **No achievement system** despite spec §6 requiring "a small static
+  achievement set: first completion, mechanic mastery, a sustained streak, a
+  difficult content milestone, and an accessibility-neutral long-term goal."
+  New `js/achievements.js` declares the five static achievements
+  (`first-rescue`, `mechanic-mastery`, `daily-streak-7`, `ember-depths-veteran`,
+  `guardian-hundred`) and a pure, idempotent `evaluateAchievements()`.
+  `js/main.js` evaluates on every won round: progression gains `rescuedTotal`
+  (villagers rescued, feeds the long-term goal) and daily wins append the UTC
+  day seed to `streakDays` (feeds the consecutive-day streak). Unlocks are
+  announced on the results screen; the full set with locked/unlocked state
+  lives in Profile & Progress. (`js/session.js` progression defaults extended;
+  older saves pick the new fields up via the existing spread merge.)
+- **Results screen lacked the spec's "achievements" and "comparison" items.**
+  Unlocked achievements now render on results; daily results also fetch
+  `/api/v1/leaderboard?seed=<today>` (same online gate as the score submit) and
+  show the top of today's board.
+- **Mastery track (launch scope, spec §7) was invisible.** Journey stages
+  already carried `difficulty.mastery` flags (one per theme); the journey grid
+  now marks them with a ♛ (and "mastery test" in the button label/title), and
+  Profile & Progress shows "Mastery track: N/5 theme-final stages cleared".
+- **Shipped leaderboard still contained a test entry** (`tester-20514`) from
+  before the server-test data-dir isolation fix. `data/leaderboard.json`
+  reset to empty.
+- New `tests/achievements.test.js` (set shape, unlock rules, streak math,
+  idempotency, no-mutation); e2e extended to assert the results achievement
+  section, the profile achievements/mastery lines, and the 5 ♛ markers.
+
+**Verification:** `npm test` → 42 passing, 0 failing. `node tests/e2e.mjs` →
+E2E PASS, desktop + mobile, no page errors.
+
+## UI contrast + first-play guidance (2026-09-08)
+
+- **Low-contrast UI.** Rails, buttons and panels were dark-on-dark with no
+  borders; form controls rendered in the browser's light theme. `index.html`
+  now uses a brighter palette (`--fg` #f3f6fa, `--dim` #b9c3d0, buttons
+  #313b4c with a #5d6a80 border), rail/tray/panel dividers, `color-scheme:
+  dark` with styled selects/checkboxes, accent-coloured section headings, and
+  a yellow focus ring. Hint text is now a filled accent callout.
+- **Low-contrast 3D scene.** Stone nearly matched the sky and chamber glass
+  was invisible. `js/content.js` THEMES now use dark skies and pale stone;
+  `js/render.js` adds a dark interior plate and white edge frame to every
+  chamber, a dark slot behind each pin, thicker brass pins/rings, brighter
+  water emissive and stronger lighting.
+- **Selection ring drawn at the castle centre.** Pin groups sat at the
+  origin (children carried the offset), so `select()` copied a zero position.
+  Groups are now anchored at the pin's world position (`userData.base`) and
+  the lift pose/marker use it.
+- **Tutorial lesson text was invisible to sighted players** (only sent to
+  the captions live region). New in-stage coach banner (`ui.coach`) shows the
+  lesson title/text during Learn, plus a 3-step first-play walkthrough
+  (choose a pin → pull it → watch the flow) on the first board of any mode.
+  It is dismissable ("Got it"), persisted as `prog.coachDone`, and sits below
+  the canvas as a flex sibling so it never covers the board.
+- **Onboarding discoverability.** Title screen gains "How to play" (rule
+  cards, previously only reachable from Pause) and accurate newcomer copy;
+  mode select highlights Learn as "Recommended" until the tutorial is done;
+  the pin list has a visible "Pins you can pull" heading; tutorial rails show
+  the lesson title instead of the raw level id.
+- **Stage sizing.** The canvas is now absolutely positioned inside its host
+  and grid rows use `minmax(0, 1fr)`, so the stage can never grow past the
+  shell (the coach used to slide under the tray).
+
+**Verification:** `npm test` → 36 passing. `node tests/e2e.mjs` → E2E PASS,
+desktop + mobile, no page errors.
+
 ## Review fixes (2026-09-07)
 
 - **Left-handed tray toggle crashed.** `js/ui.js` pause settings called

@@ -236,12 +236,12 @@ export function saveSettings(settings, storage) {
 export function loadProgression(storage) {
   try {
     const raw = (storage || defaultStorage()).getItem('rescue-pins:progression');
-    if (!raw) return { v: 1, completed: {}, bestScores: {}, tutorialDone: false, streakDays: [] };
+    if (!raw) return { v: 1, completed: {}, bestScores: {}, tutorialDone: false, streakDays: [], achievements: [], rescuedTotal: 0 };
     const doc = JSON.parse(raw);
     if (doc.checksum !== hashString(stableStringify({ ...doc, checksum: undefined }))) throw new Error('bad');
     const { checksum, ...data } = doc;
-    return { v: 1, completed: {}, bestScores: {}, tutorialDone: false, streakDays: [], ...data };
-  } catch { return { v: 1, completed: {}, bestScores: {}, tutorialDone: false, streakDays: [] }; }
+    return { v: 1, completed: {}, bestScores: {}, tutorialDone: false, streakDays: [], achievements: [], rescuedTotal: 0, ...data };
+  } catch { return { v: 1, completed: {}, bestScores: {}, tutorialDone: false, streakDays: [], achievements: [], rescuedTotal: 0 }; }
 }
 
 export function saveProgression(prog, storage) {

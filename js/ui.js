@@ -37,6 +37,12 @@ export function createUI(root, actions, settings) {
   webglFallback.hidden = true;
   stage.appendChild(webglFallback);
 
+  // in-stage coach banner: visible first-play guidance and tutorial lesson text
+  const coachBox = el('aside', 'rp-coach');
+  coachBox.setAttribute('aria-label', 'Guidance');
+  coachBox.hidden = true;
+  stage.appendChild(coachBox);
+
   const overlay = el('div', 'rp-overlay');
   overlay.hidden = true;
   root.appendChild(overlay);
@@ -89,13 +95,16 @@ export function createUI(root, actions, settings) {
       button('Profile & Progress', '', () => actions.showProgression()));
     p.appendChild(row);
     const done = Object.keys(prog.completed || {}).length;
-    p.appendChild(el('p', 'rp-dim', done ? `Journey progress: ${done}/40 stages cleared` : 'New here? Play starts with a short tutorial.'));
+    p.appendChild(el('p', 'rp-dim', done ? `Journey progress: ${done}/40 stages cleared` : 'New here? Press Play, then pick Learn for five short lessons.'));
+    p.appendChild(button('How to play', 'rp-btn-quiet', () => actions.showHelp('title')));
     showOverlay(p);
   }
 
-  function modeSelectScreen() {
+  function modeSelectScreen(opts) {
+    const newcomer = !(opts && opts.tutorialDone);
     const p = el('section', 'rp-panel');
     p.appendChild(el('h2', '', 'Choose a mode'));
+    if (newcomer) p.appendChild(el('p', 'rp-dim', 'First time? Learn teaches the controls and rules one at a time.'));
     const modes = [
       ['learn', 'Learn', 'Five short lessons. One rule at a time. Unranked.'],
       ['journey', 'Journey', '40 authored castles across five themes.'],
@@ -103,8 +112,9 @@ export function createUI(root, actions, settings) {
       ['practice', 'Practice', 'Pick a stage, undo allowed, unranked.'],
     ];
     for (const [id, name, desc] of modes) {
-      const b = button(name, 'rp-btn-mode', () => actions.startMode(id));
-      b.appendChild(el('small', 'rp-dim', ' ' + desc));
+      const b = button(name, 'rp-btn-mode' + (newcomer && id === 'learn' ? ' rp-btn-primary' : ''), () => actions.startMode(id));
+      if (newcomer && id === 'learn') b.appendChild(el('span', 'rp-badge', 'Recommended'));
+      b.appendChild(el('small', 'rp-dim', desc));
       p.appendChild(b);
     }
     p.appendChild(button('Back', 'rp-btn-quiet', () => actions.showTitle()));
@@ -118,8 +128,9 @@ export function createUI(root, actions, settings) {
     journey.forEach((lv, i) => {
       const done = !!(prog.completed || {})[lv.id];
       const best = (prog.bestScores || {})[lv.id];
-      const b = button(`${done ? '★' : '☆'} ${i + 1}`, done ? 'rp-stage-done' : '', () => actions.startLevel(lv));
-      b.title = `${lv.name} — par ${lv.par}${lv.moveLimit ? ' — move limit ' + lv.moveLimit : ''}${best ? ' — best ' + best : ''}`;
+      const mastery = lv.difficulty && lv.difficulty.mastery;
+      const b = button(`${done ? '★' : '☆'} ${i + 1}${mastery ? ' ♛' : ''}`, done ? 'rp-stage-done' : '', () => actions.startLevel(lv));
+      b.title = `${lv.name} — par ${lv.par}${lv.moveLimit ? ' — move limit ' + lv.moveLimit : ''}${mastery ? ' — mastery test' : ''}${best ? ' — best ' + best : ''}`;
       b.setAttribute('aria-label', b.title);
       grid.appendChild(b);
     });
@@ -128,16 +139,28 @@ export function createUI(root, actions, settings) {
     showOverlay(p);
   }
 
-  function progressionScreen(prog) {
+  function progressionScreen(prog, extra) {
     const p = el('section', 'rp-panel');
     p.appendChild(el('h2', '', 'Profile & Progress'));
     const done = Object.keys(prog.completed || {}).length;
     p.appendChild(el('p', '', `Stages cleared: ${done}/40`));
     p.appendChild(el('p', '', `Tutorial: ${prog.tutorialDone ? 'complete' : 'not finished'}`));
+    if (extra && extra.masteryTotal) {
+      p.appendChild(el('p', '', `Mastery track: ${extra.masteryDone}/${extra.masteryTotal} theme-final stages cleared`));
+    }
     const best = Object.entries(prog.bestScores || {});
     if (best.length) {
       const ul = el('ul', 'rp-best-list');
       for (const [id, s] of best.slice(-8)) ul.appendChild(el('li', '', `${id}: ${s}`));
+      p.appendChild(ul);
+    }
+    if (extra && extra.achievements && extra.achievements.length) {
+      p.appendChild(el('h3', 'rp-rail-title', 'Achievements'));
+      const ul = el('ul', 'rp-score-list');
+      for (const a of extra.achievements) {
+        ul.appendChild(el('li', a.unlocked ? 'rp-win' : 'rp-dim',
+          `${a.unlocked ? '✓' : '○'} ${a.name} — ${a.description}`));
+      }
       p.appendChild(ul);
     }
     p.appendChild(el('p', 'rp-dim', 'Progress is stored locally (versioned, checksummed).'));
@@ -166,6 +189,18 @@ export function createUI(root, actions, settings) {
     ul.appendChild(el('li', 'rp-total', `Total: ${sb.total}`));
     p.appendChild(ul);
     p.appendChild(el('p', 'rp-dim', `Pins pulled: ${result.moves} (par ${result.par})`));
+    if (result.achievements && result.achievements.length) {
+      p.appendChild(el('h3', 'rp-rail-title', 'Achievements unlocked'));
+      const au = el('ul', 'rp-score-list');
+      for (const a of result.achievements) au.appendChild(el('li', 'rp-win', `✓ ${a.name} — ${a.description}`));
+      p.appendChild(au);
+    }
+    if (result.board && result.board.length) {
+      p.appendChild(el('h3', 'rp-rail-title', "Today's daily board"));
+      const ol = el('ol', 'rp-score-list');
+      for (const e of result.board) ol.appendChild(el('li', '', `${e.name}: ${e.score}`));
+      p.appendChild(ol);
+    }
     const row = el('div', 'rp-row');
     row.append(
       button('Retry', '', () => actions.retry()),
@@ -262,11 +297,12 @@ export function createUI(root, actions, settings) {
     p.appendChild(el('h2', '', 'How to play'));
     const cards = el('div', 'rp-rule-cards');
     const rules = [
-      ['Pull pins', 'Select a brass pin with arrow keys or tap, then confirm with ' + bindings.confirm + '. Its chamber opens.'],
+      ['Pull pins', 'Tap or click a brass pin to select it, then tap it again to pull it. On a keyboard, choose a pin with the arrow keys and press ' + bindings.confirm + '. The pin list in the Status rail works too: one press pulls that pin.'],
       ['Water rescues', 'Water falls and flows sideways. A villager touched by water is rescued.'],
       ['Lava kills', 'A villager touched by lava is lost. The stage ends.'],
       ['Steam', 'Water and lava in the same chamber neutralize into inert steam.'],
       ['Score', 'Save villagers, waste no pins: beating par and avoiding mistakes raises your score.'],
+      ['Stuck?', 'Press H (or the Hint button) for a pin on a winning line. Esc pauses and opens settings. U undoes in Learn and Practice.'],
     ];
     for (const [t, d] of rules) {
       const c = el('article', 'rp-rule-card');
@@ -284,13 +320,14 @@ export function createUI(root, actions, settings) {
     railLeft.innerHTML = '';
     railLeft.appendChild(el('h2', 'rp-rail-title', data.title || ''));
     railLeft.appendChild(el('p', 'rp-objective', data.objective));
-    railLeft.appendChild(el('p', 'rp-moves', `Moves ${data.moves} / par ${data.par}${data.moveLimit ? ' · limit ' + data.moveLimit : ''}`));
+    railLeft.appendChild(stat('Moves', `${data.moves} / par ${data.par}${data.moveLimit ? ' · limit ' + data.moveLimit : ''}`, 'rp-moves'));
     if (data.themeName) railLeft.appendChild(el('p', 'rp-dim', data.themeName));
     railRight.innerHTML = '';
     railRight.appendChild(el('h2', 'rp-rail-title', 'Status'));
-    railRight.appendChild(el('p', '', `Saved ${data.saved}/${data.heroTotal}`));
-    railRight.appendChild(el('p', '', `Score ${data.score}`));
+    railRight.appendChild(stat('Saved', `${data.saved} / ${data.heroTotal}`));
+    railRight.appendChild(stat('Score', String(data.score)));
     if (data.hint) railRight.appendChild(el('p', 'rp-hint', data.hint));
+    railRight.appendChild(el('h3', 'rp-rail-title rp-pin-heading', 'Pins you can pull'));
     tray.innerHTML = '';
     const mk = (label, fn, cls) => { const b = button(label, cls || '', fn); tray.appendChild(b); };
     if (data.canUndo) mk('↩ Undo (U)', () => actions.undo());
@@ -298,6 +335,26 @@ export function createUI(root, actions, settings) {
     mk('⏸ Pause (Esc)', () => actions.pause(), 'rp-btn-quiet');
     announce(liveObjective, data.objective);
     announce(liveScore, `Score ${data.score}. Moves ${data.moves} of par ${data.par}.`);
+  }
+
+  function stat(label, value, cls) {
+    const p = el('p', 'rp-stat ' + (cls || ''));
+    p.append(el('span', '', label), el('b', '', value));
+    return p;
+  }
+
+  // Coach banner. data: { step, title, text, tip, dismiss } or null to hide.
+  function coach(data) {
+    coachBox.innerHTML = '';
+    if (!data) { coachBox.hidden = true; return; }
+    const body = el('div', 'rp-coach-body');
+    if (data.step) body.appendChild(el('p', 'rp-coach-step', data.step));
+    if (data.title) body.appendChild(el('h3', '', data.title));
+    if (data.text) body.appendChild(el('p', '', data.text));
+    if (data.tip) body.appendChild(el('p', 'rp-coach-tip', data.tip));
+    coachBox.appendChild(body);
+    if (data.dismiss) coachBox.appendChild(button(data.dismiss, 'rp-btn-quiet', () => actions.dismissCoach()));
+    coachBox.hidden = false;
   }
 
   function pinSelector(legalPinIds, selectedId) {
@@ -309,6 +366,7 @@ export function createUI(root, actions, settings) {
       railRight.appendChild(list);
     }
     list.innerHTML = '';
+    if (!legalPinIds.length) list.appendChild(el('p', 'rp-dim', 'No pins left to pull.'));
     for (const id of legalPinIds) {
       // Real action buttons (clicking pulls the pin). Do NOT override their
       // native `button` role — role="option" unmasked the button semantics and
@@ -351,7 +409,7 @@ export function createUI(root, actions, settings) {
   function caption(text) { if (settings.captions !== false) announce(liveCaption, text); }
 
   return { titleScreen, modeSelectScreen, journeyScreen, progressionScreen, countdownScreen,
-           resultsScreen, pauseScreen, helpScreen, hud, pinSelector, updateMirror,
+           resultsScreen, pauseScreen, helpScreen, hud, pinSelector, updateMirror, coach,
            clearOverlay, showWebglFallback, error, caption,
            canvasHost, el };
 }
