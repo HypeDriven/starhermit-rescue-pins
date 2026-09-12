@@ -47,6 +47,16 @@ export function createUI(root, actions, settings) {
   overlay.hidden = true;
   root.appendChild(overlay);
 
+  // persistent sync badge: lives in the right rail; hud()/pinSelector()
+  // re-append it after their periodic rail rebuilds
+  const syncBadge = el('p', 'rp-dim rp-sync');
+  syncBadge.hidden = true;
+  railRight.appendChild(syncBadge);
+  function setSync(text) {
+    if (text) { syncBadge.textContent = text; syncBadge.hidden = false; }
+    else syncBadge.hidden = true;
+  }
+
   function el(tag, cls, text) {
     const e = document.createElement(tag);
     if (cls) e.className = cls;
@@ -88,6 +98,8 @@ export function createUI(root, actions, settings) {
     if (opts && opts.hasSave) {
       p.appendChild(button('Continue saved game', '', () => actions.continueSaved()));
     }
+    if (opts && opts.player) p.appendChild(el('p', 'rp-dim', `Signed in as ${opts.player}`));
+    if (opts && opts.sync) p.appendChild(el('p', 'rp-dim', opts.sync));
     const row = el('div', 'rp-row');
     row.append(
       button('Daily Challenge', '', () => actions.startDaily()),
@@ -163,7 +175,7 @@ export function createUI(root, actions, settings) {
       }
       p.appendChild(ul);
     }
-    p.appendChild(el('p', 'rp-dim', 'Progress is stored locally (versioned, checksummed).'));
+    if (extra && extra.account) p.appendChild(el('p', 'rp-dim', extra.account));
     p.appendChild(button('Back', 'rp-btn-quiet', () => actions.showTitle()));
     showOverlay(p);
   }
@@ -324,10 +336,13 @@ export function createUI(root, actions, settings) {
     if (data.themeName) railLeft.appendChild(el('p', 'rp-dim', data.themeName));
     railRight.innerHTML = '';
     railRight.appendChild(el('h2', 'rp-rail-title', 'Status'));
+    if (data.player) railRight.appendChild(stat('Player', data.player));
     railRight.appendChild(stat('Saved', `${data.saved} / ${data.heroTotal}`));
     railRight.appendChild(stat('Score', String(data.score)));
     if (data.hint) railRight.appendChild(el('p', 'rp-hint', data.hint));
     railRight.appendChild(el('h3', 'rp-rail-title rp-pin-heading', 'Pins you can pull'));
+    if (data.sync) setSync(data.sync);
+    railRight.appendChild(syncBadge);
     tray.innerHTML = '';
     const mk = (label, fn, cls) => { const b = button(label, cls || '', fn); tray.appendChild(b); };
     if (data.canUndo) mk('↩ Undo (U)', () => actions.undo());
@@ -365,6 +380,7 @@ export function createUI(root, actions, settings) {
       list.setAttribute('aria-label', 'Pins you can pull');
       railRight.appendChild(list);
     }
+    railRight.appendChild(syncBadge); // keep the badge after the pin list
     list.innerHTML = '';
     if (!legalPinIds.length) list.appendChild(el('p', 'rp-dim', 'No pins left to pull.'));
     for (const id of legalPinIds) {
@@ -410,6 +426,6 @@ export function createUI(root, actions, settings) {
 
   return { titleScreen, modeSelectScreen, journeyScreen, progressionScreen, countdownScreen,
            resultsScreen, pauseScreen, helpScreen, hud, pinSelector, updateMirror, coach,
-           clearOverlay, showWebglFallback, error, caption,
+           clearOverlay, showWebglFallback, error, caption, setSync,
            canvasHost, el };
 }

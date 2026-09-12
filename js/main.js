@@ -4,6 +4,7 @@
 import { solveState } from './rules.js';
 import { getTutorial, getJourney, getDailyLevel, dailySeedForDate, THEMES, findLevel } from './content.js';
 import { createSession, loadSettings, saveSettings, loadProgression, saveProgression, defaultStorage } from './session.js';
+import { createPlatform } from './platform.js';
 import { createRenderer } from './render.js';
 import { createUI } from './ui.js';
 import { createAudio } from './audio.js';
@@ -13,6 +14,13 @@ const root = document.getElementById('app');
 const storage = defaultStorage();
 const settings = loadSettings(storage);
 let prog = loadProgression(storage);
+// StarHermit platform adapter: launch token, nickname, cloud save, boards.
+// Without a token every method no-ops and the game plays exactly as before.
+const platform = createPlatform({ onSync: () => { if (ui) ui.setSync(platform.syncLabel()); } });
+function persistProgress() {
+  saveProgression(prog, storage);
+  platform.queueCloudSave(prog); // no-op unless hosted; localStorage stays the cache
+}
 const audio = createAudio(settings, (ev) => ui && ui.caption(soundCaption(ev)));
 
 function soundCaption(ev) {
@@ -21,12 +29,15 @@ function soundCaption(ev) {
 }
 
 // ---- server time sync + daily API with graceful offline fallback ----
+// Hosted (StarHermit): same-origin platform /api with the Bearer launch token;
+// the daily board is the platform leaderboard (read-only). Local dev: the
+// repo's own server.js serves these routes, daily verify included.
 let clockOffsetMs = 0;
 let apiOnline = false;
 async function syncClock() {
   try {
     const t0 = Date.now();
-    const res = await fetch('/api/v1/time', { signal: AbortSignal.timeout(3000) });
+    const res = await fetch('/api/v1/time', { headers: platform.authHeaders(), signal: AbortSignal.timeout(3000) });
     if (!res.ok) throw new Error('bad');
     const body = await res.json();
     clockOffsetMs = body.serverTime - Math.round((t0 + Date.now()) / 2);
@@ -39,10 +50,11 @@ async function submitDaily(envelope, name) {
   if (!apiOnline) return { ok: false, message: 'Offline — score kept locally only.' };
   try {
     const res = await fetch('/api/v1/daily/verify', {
-      method: 'POST', headers: { 'content-type': 'application/json' },
+      method: 'POST', headers: { 'content-type': 'application/json', ...platform.authHeaders() },
       body: JSON.stringify({ envelope, name: (name || 'guest').slice(0, 24) }),
       signal: AbortSignal.timeout(5000),
     });
+    if (res.status === 404) return { ok: false, message: 'Daily ranking is unavailable on this host — score kept locally only.' };
     const body = await res.json();
     if (!res.ok) return { ok: false, message: 'Rejected: ' + (body.error || res.status) };
     return { ok: true, message: `Daily score accepted: ${body.score.total}` };
@@ -51,6 +63,10 @@ async function submitDaily(envelope, name) {
 
 async function fetchDailyBoard(seed) {
   if (!apiOnline) return null;
+  if (platform.hosted()) {
+    // Platform leaderboard is read-only; the game never submits scores to it.
+    try { return await platform.fetchLeaderboardEntries(5); } catch { return null; }
+  }
   try {
     const res = await fetch('/api/v1/leaderboard?seed=' + (seed >>> 0), { signal: AbortSignal.timeout(5000) });
     if (!res.ok) return null;
@@ -91,6 +107,8 @@ function refreshHud(hint) {
     canUndo: sess.session.allowUndo && sess.session.commandLog.length > 0 && sess.session.screen === 'active',
     themeName: themeOf(sess.session.level).name,
     hint: hint || null,
+    player: platform.displayName(),
+    sync: platform.syncLabel(),
   });
   ui.pinSelector(legal, selectedPin);
   ui.updateMirror(s, sess.session.level.name || sess.session.level.id);
@@ -122,7 +140,7 @@ function coachContent(state, legal) {
   if (!prog.coachDone) {
     if (state.stats.moves === 0) step = selectedPin && legal.length ? 'pull' : 'select';
     else if (state.stats.moves === 1) step = 'flow';
-    else { prog.coachDone = true; saveProgression(prog, storage); }
+    else { prog.coachDone = true; persistProgress(); }
   }
   if (!step && !isTutorial) return null;
   const stepIdx = { select: 1, pull: 2, flow: 3 }[step];
@@ -211,10 +229,10 @@ async function finishRound(term) {
     const ev = evaluateAchievements(prog, (lid) => { const l = findLevel(lid); return l && l.theme; });
     prog.achievements = ev.unlocked; // idempotent: re-storing the full set is safe
     newlyUnlocked = ev.newly.map(achievementByKey).filter(Boolean);
-    saveProgression(prog, storage);
+    persistProgress();
   }
   if (sess.session.mode === 'daily' && term.won) {
-    dailySubmit = await submitDaily(sess.replayEnvelope(), 'guest');
+    dailySubmit = await submitDaily(sess.replayEnvelope(), platform.displayName() || 'guest');
     dailyBoard = await fetchDailyBoard(sess.session.level.daily);
   }
   sess.transition('results', term.reason);
@@ -230,12 +248,21 @@ function hasSavedGame() {
   try { return !!storage.getItem('rescue-pins:last'); } catch { return false; }
 }
 
+// identity + sync status for the title/profile name slots (nulls when local)
+function titleOpts() {
+  return { hasSave: hasSavedGame(), player: platform.displayName(), sync: platform.syncLabel() };
+}
+function accountLine() {
+  if (platform.hosted()) return `Signed in as ${platform.displayName()} · ${platform.syncLabel() || 'cloud save'}`;
+  return 'Progress is stored locally (versioned, checksummed).';
+}
+
 // ---- UI action handlers ----
 const actions = {
   uiAck: () => audio.play('ack'),
-  showTitle: () => { if (sess) sess.transition('title', 'menu'); ui.titleScreen(prog, { hasSave: hasSavedGame() }); },
+  showTitle: () => { if (sess) sess.transition('title', 'menu'); ui.titleScreen(prog, titleOpts()); },
   showModeSelect: () => ui.modeSelectScreen({ tutorialDone: !!prog.tutorialDone }),
-  dismissCoach: () => { prog.coachDone = true; saveProgression(prog, storage); if (sess && sess.session.screen === 'active') refreshHud(); },
+  dismissCoach: () => { prog.coachDone = true; persistProgress(); if (sess && sess.session.screen === 'active') refreshHud(); },
   showJourney: () => ui.journeyScreen(prog, journey),
   showProgression: () => {
     const unlocked = new Set(prog.achievements || []);
@@ -244,6 +271,7 @@ const actions = {
       achievements: ACHIEVEMENTS.map(a => ({ ...a, unlocked: unlocked.has(a.key) })),
       masteryDone: masteryStages.filter(l => prog.completed[l.id]).length,
       masteryTotal: masteryStages.length,
+      account: accountLine(),
     });
   },
   startMode: (mode) => {
@@ -302,7 +330,7 @@ const actions = {
   },
   quitToTitle: () => {
     if (sess) { sess.saveSnapshot('rescue-pins:last'); sess.transition('title', 'quit'); }
-    ui.titleScreen(prog, { hasSave: hasSavedGame() });
+    ui.titleScreen(prog, titleOpts());
   },
   showHelp: (from) => { helpReturn = from === 'title' ? 'title' : 'pause'; ui.helpScreen({ confirm: 'Enter' }); },
   backFromHelp: () => { if (helpReturn === 'title') actions.showTitle(); else ui.pauseScreen(); },
@@ -428,6 +456,7 @@ function loop(now) {
 // ---- boot ----
 async function boot() {
   ui = createUI(root, actions, settings);
+  platform.start(); // reads the launch token (ui exists for sync callbacks)
   document.body.classList.toggle('hc', !!settings.graphics.highContrast);
   document.body.classList.toggle('big-text', settings.graphics.textSize === 'large');
   document.body.classList.toggle('lefty', !!settings.controls.leftHanded);
@@ -447,12 +476,21 @@ async function boot() {
 
   await syncClock();
 
+  // Hosted: prefer the remote cloud save over the local cache (conflict rule
+  // per platform contract); queue a mirror upload so the slot exists.
+  if (platform.hosted()) {
+    const remote = await platform.loadCloudSave();
+    if (remote) { prog = remote; saveProgression(prog, storage); }
+    platform.queueCloudSave(prog);
+  }
+
   // AudioContext may only start after a user gesture (browser autoplay policy)
   const kickAudio = () => { audio.startAmbience(); window.removeEventListener('pointerdown', kickAudio); window.removeEventListener('keydown', kickAudio); };
   window.addEventListener('pointerdown', kickAudio);
   window.addEventListener('keydown', kickAudio);
 
-  ui.titleScreen(prog, { hasSave: hasSavedGame() });
+  ui.setSync(platform.syncLabel());
+  ui.titleScreen(prog, titleOpts());
   requestAnimationFrame(loop);
 }
 
