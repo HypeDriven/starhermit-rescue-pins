@@ -118,8 +118,17 @@
   }
   /* landscape mobile: narrow status rail */
   @media (max-height: 480px) and (orientation: landscape) {
-    .rp-shell { grid-template-columns: 130px minmax(0, 1fr) 140px; grid-template-rows: 1fr; }
-    .rp-rail-right { display: block; max-height: 100vh; overflow-y: auto; }
+    .rp-shell { grid-template-columns: 150px minmax(0, 1fr) 150px; grid-template-rows: minmax(0, 1fr); }
+    .rp-rail { max-height: none; min-height: 0; overflow-y: auto; padding: 8px 10px; font-size: .9rem; }
+    .rp-rail-left { order: 0; border-right: 1px solid var(--edge); border-bottom: 0; }
+    .rp-stage { order: 1; min-height: 0; }
+    .rp-rail-right { order: 2; display: block; border-left: 1px solid var(--edge); border-top: 0; }
+    /* the coach floats over the top of the stage so the pins keep the height */
+    .rp-coach { position: absolute; top: 6px; left: 6px; right: 6px; margin: 0; padding: 6px 10px; gap: 8px; font-size: .85rem; }
+    .rp-coach h3 { font-size: .95rem; margin: 0 0 2px; }
+    .rp-coach-tip { display: none; }
+    .rp-tray { padding: 4px 8px; padding-bottom: calc(4px + var(--sab)); }
+    .rp-tray .rp-btn { min-height: 40px; padding: 4px 10px; }
   }
 </style>
 </head>
