@@ -53,7 +53,7 @@
   .rp-btn-primary small { color: var(--accent-ink); }
   .rp-badge { display: inline-block; font-size: .75rem; padding: 1px 8px; border-radius: 999px; margin-left: 8px;
     background: var(--accent-ink); color: var(--accent); vertical-align: middle; }
-  .rp-overlay { position: fixed; inset: 0; background: rgba(4,6,9,.8);
+  .rp-overlay { position: fixed; inset: 0; background: rgba(4,6,9,.62);
     display: flex; align-items: center; justify-content: center; z-index: 10; overflow-y: auto; }
   .rp-overlay[hidden] { display: none; }
   .rp-panel { background: var(--panel); border: 1px solid var(--edge); border-radius: 14px; padding: 22px; max-width: 70ch;
@@ -75,6 +75,18 @@
   .rp-field input[type=checkbox] { width: 22px; height: 22px; accent-color: var(--accent); }
   .rp-field select { font: inherit; background: var(--btn); color: var(--fg); border: 2px solid var(--btn-edge);
     border-radius: 8px; padding: 6px 10px; min-height: 40px; }
+  .rp-gfx .rp-field { flex-wrap: wrap; row-gap: 2px; }
+  .rp-gfx .rp-field select { max-width: 100%; }
+  @media (max-width: 480px) { .rp-gfx .rp-field select { flex: 1 1 100%; } }
+  .rp-scale-box { display: flex; align-items: center; gap: 8px; flex: 1 1 170px; justify-content: flex-end; min-width: 0; white-space: nowrap; }
+  .rp-scale-box input[type=range] { flex: 1 1 auto; width: 100%; min-width: 80px; max-width: 200px; min-height: 44px; accent-color: var(--accent); }
+  .rp-scale-val { min-width: 3.5em; text-align: right; font-variant-numeric: tabular-nums; }
+  .rp-gfx-summary { font-size: .85rem; margin: 8px 0 4px; overflow-wrap: anywhere; }
+  .rp-gfx-note { font-size: .85rem; color: var(--danger); margin: 0 0 4px; }
+  .rp-gfx-note[hidden] { display: none; }
+  #rp-fps { position: fixed; left: calc(8px + var(--sal)); bottom: calc(70px + var(--sab)); z-index: 20; pointer-events: none;
+    font: 600 12px/1.2 ui-monospace, monospace; color: var(--fg); background: rgba(0,0,0,.6); padding: 3px 6px; border-radius: 6px; }
+  #rp-fps[hidden] { display: none; }
   .rp-pin-list { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
   .rp-pin-opt { border-color: #c9a227; }
   .rp-pin-opt.rp-selected { border-color: var(--accent); background: var(--btn-hi); box-shadow: inset 0 0 0 1px var(--accent); }
@@ -136,6 +148,9 @@
 <header class="sr-only"><h1>Rescue Pins</h1></header>
 <main id="app"></main>
 <noscript><p>Rescue Pins needs JavaScript (ES modules) to run. All assets are local; no network is required to play.</p></noscript>
+<script type="importmap">
+{ "imports": { "three": "./js/three.min.js", "three/addons/": "./js/vendor/three/addons/" } }
+</script>
 <script type="module" src="js/main.js"></script>
 </body>
 </html>

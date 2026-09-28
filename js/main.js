@@ -13,6 +13,11 @@ import { ACHIEVEMENTS, achievementByKey, evaluateAchievements } from './achievem
 const root = document.getElementById('app');
 const storage = defaultStorage();
 const settings = loadSettings(storage);
+// graphics quality lives in settings.graphics.gfx; migrate the old single tier
+if (!settings.graphics.gfx || typeof settings.graphics.gfx !== 'object') {
+  const old = { low: 'low', medium: 'balanced', high: 'high' }[settings.graphics.tier];
+  settings.graphics.gfx = old ? { preset: old } : { preset: 'auto' };
+}
 let prog = loadProgression(storage);
 // StarHermit platform adapter: launch token, nickname, cloud save, boards.
 // Without a token every method no-ops and the game plays exactly as before.
@@ -337,7 +342,10 @@ const actions = {
   setVolume: (bus, v) => { settings.audio[bus] = v; audio.applyVolumes(); saveSettings(settings, storage); },
   setMuted: (m) => { audio.setMuted(m); saveSettings(settings, storage); },
   setCaptions: (c) => { settings.captions = c; saveSettings(settings, storage); },
-  setTier: (t) => { settings.graphics.tier = t; if (view) view.applyTier(t === 'auto' ? 'high' : t); saveSettings(settings, storage); },
+  showSettings: () => ui.settingsScreen(),
+  gfxSaved: () => settings.graphics.gfx || {},
+  gfxInfo: () => (view ? view.graphicsInfo() : null),
+  setGfx: (next) => { settings.graphics.gfx = next; saveSettings(settings, storage); if (view) view.setGraphics(next); },
   setPalette: (p) => { settings.graphics.palette = p; saveSettings(settings, storage); rebuildView(); },
   setReducedMotion: (m) => { settings.graphics.reducedMotion = m; saveSettings(settings, storage); rebuildView(); },
   setHighContrast: (hc) => { settings.graphics.highContrast = hc; document.body.classList.toggle('hc', hc); saveSettings(settings, storage); },
@@ -377,7 +385,18 @@ function rebuildView() {
   const s = sess && sess.session.state, lv = sess && sess.session.level;
   view.dispose();
   view = createRenderer(ui.canvasHost, { settings });
-  if (view && s) { view.build(s, lv, themeOf(lv)); wirePointer(); }
+  if (!view) return;
+  if (s) view.build(s, lv, themeOf(lv));
+  else showcase();
+  wirePointer();
+}
+
+// title backdrop: the first journey castle, untouched, behind the menu
+function showcase() {
+  if (!view || sess || !journey || !journey.length) return;
+  const lv = journey.find(l => Object.values(l.chambers || {}).some(c => c.lava) &&
+    Object.values(l.chambers || {}).some(c => c.water)) || journey[0];
+  view.build(createSession({ storage, level: lv, mode: 'journey', now: 0 }).session.state, lv, themeOf(lv));
 }
 
 // ---- pointer input (raycast against interaction layer only) ----
@@ -490,6 +509,7 @@ async function boot() {
   window.addEventListener('keydown', kickAudio);
 
   ui.setSync(platform.syncLabel());
+  showcase();
   ui.titleScreen(prog, titleOpts());
   requestAnimationFrame(loop);
 }

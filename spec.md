@@ -80,10 +80,11 @@ The Three.js canvas fills the game region but is never the only UI. Menus, text,
 
 ### Screens and overlays
 
-- **Title/home:** Play is dominant; daily challenge, journey progress, and profile are one level below.
+- **Title/home:** Play is dominant; daily challenge, journey progress, and profile are one level below; How to play and Settings sit on the bottom row. The first journey castle with lava renders behind the menu as a backdrop.
+- **Settings (from the title):** the same Audio, Graphics, Display, Controls and Accessibility sections as the pause screen, with Back to title.
 - **Mode setup:** show rules, expected duration, player count, assists, and whether the result is ranked before commitment.
 - **Play HUD:** objective, progress, current actor/state, pause, and only context-relevant actions.
-- **Pause/settings:** resume first; audio, graphics, controls, accessibility, help, and leave are clearly separated.
+- **Pause/settings:** resume first; audio, graphics, display, controls, accessibility, help, and leave are clearly separated.
 - **Results:** outcome headline, score breakdown, progress, achievements, comparison, replay/retry, and next recommended action.
 - **Help:** visual rule cards generated from current control mappings and representative legal states.
 - Daily challenge, local practice, pause, resume, results, and progression are first-class screens.
@@ -120,6 +121,8 @@ The subject is the active playfield at near-tabletop to room scale, framed so st
 - Selection uses a combination of lift/pose, outline or rim, and grounded marker—not bloom alone. Legal targets preview before commit; invalid targets explain why.
 - Event hierarchy: input acknowledgment < legal move < combo/goal < round completion. Reserve camera motion, strong emission, and dense particles for the highest tier.
 - Audio uses original short transients tied to logical events, layered material impacts, quiet ambience, and adaptive music stems. Randomized pitch/variant is seeded for replay consistency where recording matters.
+
+**Graphics.** The renderer uses ACES filmic tone mapping with sRGB output, a warm key directional light plus a sky/ground hemisphere fill (lights run at 60% with exposure compensating, so lit stone stays under the bloom threshold and only emissive things glow). Optional effects, each tied to a quality category: key-light PCF shadows with the shadow box fitted to the castle (`shadows` off/1024²/2048²/4096²); GTAO contact darkening that ignores the transparent glass fronts (`ao` off/on/high); bloom limited to lava cracks, torch flames, embers and the selection glow (threshold 0.9; `bloom`); a colour grade (S-curve, slight saturation, warm highlights/cool shadows) with vignette (`grade`); FXAA/SMAA/MSAA (`antialias`); image-based reflections from a PMREM `RoomEnvironment` assigned per material so brass, glass and water get reflections at tuned intensities (`reflections`); `detail` (plain/detailed) — brick texture with bump on the stone, a themed sky gradient, wall torches with flickering point lights, flowing lava crust with bright cracks, a water meniscus line, rounded pin tips and villagers with hats and eyes; and `particles` (off/low/high) — drifting dust motes and embers rising from lava chambers. Ambient motion (villager idle bob, water surface, lava flow, torch flicker, particle drift) stops with the game's Reduced motion setting or `prefers-reduced-motion`. Presets: Low (no post, canvas MSAA, plain detail, pixel ratio capped at 1 — as cheap as the original look), Balanced (cap 1.5), High and Ultra (cap 2, Ultra renders at 125%). Auto is the default and is chosen from the WebGL renderer string: software renderers (SwiftShader, llvmpipe) get Low, discrete GPUs and Apple M-series get High, others Balanced; touch/mobile devices cap Auto at Balanced. The Settings **Graphics** section offers Quality (Auto (detected: …) / Low / Balanced / High / Ultra), Render scale 50–200%, one select per category defaulting to "From preset (…)" (choosing a preset clears overrides), Adaptive resolution (averages 90 frames; above 26 ms it steps down by 0.1 to 60%, below 14 ms back up by 0.05), Show frame rate (bottom-left readout that never covers controls), and a summary line "GPU · cost summary · W×H px". Changes apply live without reload and persist in `rescue-pins:settings` under `graphics.gfx` (an old single `tier` value migrates to the matching preset). If the post-processing chain cannot be built or throws, the game renders without it and the panel says so. The Graphics strings are localized for en-US, en-GB, es-419, es-ES, de-DE, fr-FR, fr-CA, pt-BR and it-IT from `navigator.language`. The canvas and `<body>` carry `data-gfx-preset` with the resolved preset.
 
 ### Camera and motion
 
@@ -158,7 +161,9 @@ Follow the skill pack's acceptance gate: deterministic seeds, debug views for co
 - `bootstrap`: host handshake, capability detection, asset manifest, lifecycle.
 - `rules`: pure deterministic state transitions, legality, scoring, seeded random stream.
 - `session`: local or hosted commands, snapshots, prediction policy, reconnect, replay.
-- `render`: Three.js scene graph, semantic entity views, camera, lighting, VFX, quality.
+- `render` (`js/render.js`): Three.js scene graph, semantic entity views, camera, lighting, VFX, quality; `setGraphics()` applies settings live, `graphicsInfo()` feeds the panel, and the EffectComposer chain is RenderPass → GTAO → UnrealBloom → grade → OutputPass → SMAA/FXAA.
+- `gfx` (`js/gfx.js`): pure graphics quality model — presets, categories, `detectPreset()`, `resolve()`, `presetTier()`, `describe()`; `js/gfx-i18n.js` holds the localized Graphics strings.
+- Vendored three.js r185 (`js/three.min.js`, `js/three.core.min.js`) and same-revision addons under `js/vendor/three/addons/` (postprocessing passes, shaders, `RoomEnvironment`), mapped by the importmap in `index.html` (`three`, `three/addons/`).
 - `ui`: responsive DOM shell, focus, localization, settings, overlays, accessibility mirror.
 - `audio`: buses, event mapping, focus/background behavior, decode and memory policy.
 - `content`: versioned levels, themes, tutorials, validation metadata.
@@ -245,6 +250,7 @@ Success targets for the first public test: median first-play time under 20 secon
 
 ### Graphics and performance
 
+- `tests/gfx.test.js` covers GPU detection, preset/override resolution, the render-scale clamp, preset-clears-overrides and locale completeness; `tests/e2e.mjs` (`npm run test:e2e`) drives Settings → Graphics at desktop and mobile sizes (Low, Ultra, High, a Bloom override, the summary, the frame-rate readout, persistence across reload, back to Auto) with zero console errors or warnings.
 - Produce fixed-camera captures for every quality tier, deterministic seed sweeps, no-post baselines, debug-view mosaics, and 10-minute temporal stability runs.
 - Profile CPU, GPU, memory, shader compilation, draw calls, triangles, texture memory, and garbage collection on representative desktop and mobile classes.
 - Verify effects cannot obscure legal targets, alter picking, leak resources, or continue expensive updates while hidden.

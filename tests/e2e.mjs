@@ -4,7 +4,8 @@
  * Drives the real visible UI in headless Chrome (playwright-core + system
  * Chrome): title → mode select → journey grid → stage 1 → countdown →
  * pull pins (hint-guided, via the on-screen pin list buttons) → results,
- * plus pause/resume, in-pause settings, help/rule cards, and quit-to-title.
+ * plus pause/resume, in-pause settings, help/rule cards, and quit-to-title,
+ * and the Settings → Graphics panel (presets, an override, persistence).
  * Runs two passes: desktop 1280x800 and mobile 390x844 (touch).
  *
  * The game is fully playable offline (solo journey/practice/learn); the
@@ -24,7 +25,7 @@ const BASE = `http://127.0.0.1:${server.address().port}/`;
 
 const browser = await chromium.launch({
   executablePath: '/usr/bin/google-chrome',
-  args: ['--no-sandbox', '--enable-unsafe-swiftshader', '--mute-audio'],
+  args: ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--mute-audio'],
 });
 
 const step = async (name, fn) => {
@@ -35,7 +36,7 @@ const step = async (name, fn) => {
 function wireErrorCollection(page, errors) {
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
   page.on('console', (m) => {
-    if (m.type() === 'error' && !browserNoise.test(m.text())) errors.push(`console: ${m.text()}`);
+    if ((m.type() === 'error' || m.type() === 'warning') && !browserNoise.test(m.text())) errors.push(`console ${m.type()}: ${m.text()}`);
   });
 }
 
@@ -43,6 +44,53 @@ function throwIfErrors(errors, passName) {
   if (errors.length) {
     throw new Error(`${passName} pass had page errors:\n` + errors.join('\n'));
   }
+}
+
+// Settings → Graphics through the visible UI: preset switch, one override,
+// live application (data-gfx-preset + summary) and persistence across reload.
+async function graphicsSettings(page, shot, mobile) {
+  const preset = () => page.evaluate(() => document.body.dataset.gfxPreset);
+  const canvasPreset = () => page.locator('.rp-canvas-host canvas').getAttribute('data-gfx-preset');
+  await page.locator('#rp-settings-btn').click();
+  await page.waitForSelector('#rp-gfx-section', { state: 'visible' });
+  const autoLabel = await page.locator('#gfx-preset option[value="auto"]').innerText();
+  if (!/Auto \(detected: (Low|Balanced|High)\)/.test(autoLabel)) throw new Error('auto label: ' + autoLabel);
+  await page.locator('#gfx-preset').selectOption('low');
+  if (await preset() !== 'low' || await canvasPreset() !== 'low') throw new Error('Low preset not applied');
+  await page.locator('#gfx-preset').selectOption('ultra');
+  await page.waitForTimeout(800); // a few Ultra frames (GTAO high, MSAA target) must stay console-clean
+  await page.locator('#gfx-preset').selectOption('high');
+  if (await preset() !== 'high') throw new Error('High preset not applied');
+  const fromPreset = await page.locator('#gfx-bloom option[value="preset"]').innerText();
+  if (!/From preset \(On\)/.test(fromPreset)) throw new Error('bloom preset label: ' + fromPreset);
+  await page.locator('#gfx-bloom').selectOption('off');
+  await page.waitForTimeout(300);
+  const summary = await page.locator('#gfx-summary').innerText();
+  if (/bloom/.test(summary) || !/\d+×\d+ px/.test(summary)) throw new Error('summary not updated: ' + summary);
+  // panel fits the viewport (no horizontal cut-off)
+  const vw = page.viewportSize().width;
+  const box = await page.locator('.rp-overlay:not([hidden]) .rp-panel').boundingBox();
+  if (box.x < 0 || box.x + box.width > vw + 1) throw new Error('settings panel overflows viewport: ' + JSON.stringify(box));
+  if (mobile) {
+    await page.locator('#gfx-show-fps').scrollIntoViewIfNeeded();
+    await page.locator('#gfx-show-fps').check();
+    await page.waitForSelector('#rp-fps', { state: 'visible' });
+    await page.locator('#gfx-show-fps').uncheck();
+  }
+  await page.screenshot({ path: shot('graphics') });
+  // survives reload
+  await page.reload({ waitUntil: 'load' });
+  await page.waitForSelector('.rp-overlay:not([hidden]) .rp-title', { timeout: 15000 });
+  if (await preset() !== 'high') throw new Error('preset lost on reload: ' + await preset());
+  await page.locator('#rp-settings-btn').click();
+  if (await page.locator('#gfx-preset').inputValue() !== 'high') throw new Error('preset select not restored');
+  if (await page.locator('#gfx-bloom').inputValue() !== 'off') throw new Error('bloom override not restored');
+  // choosing a preset clears overrides; back to Auto (software GPU → Low) for the rest of the run
+  await page.locator('#gfx-preset').selectOption('auto');
+  if (await page.locator('#gfx-bloom').inputValue() !== 'preset') throw new Error('preset did not clear overrides');
+  if (await preset() !== 'low') throw new Error('Auto on a software GPU should resolve to Low, got ' + await preset());
+  await page.getByRole('button', { name: 'Back' }).click();
+  await page.waitForSelector('.rp-overlay:not([hidden]) .rp-title');
 }
 
 const resultsHeading = (page) => page.locator('.rp-overlay:not([hidden]) .rp-panel h2');
@@ -112,6 +160,10 @@ async function desktopPass() {
     await page.screenshot({ path: shot('title') });
   });
 
+  await step('[desktop] settings → graphics presets, override, persistence', async () => {
+    await graphicsSettings(page, shot, false);
+  });
+
   await step('[desktop] journey stage 1 → countdown → active', async () => {
     await startStage1(page, shot);
     await page.screenshot({ path: shot('active') });
@@ -122,6 +174,7 @@ async function desktopPass() {
     await page.waitForSelector('.rp-overlay:not([hidden]) .rp-panel h2:text("Paused")');
     await page.screenshot({ path: shot('pause') });
     // settings live inside the pause screen: exercise a toggle and a select
+    await page.waitForSelector('#rp-gfx-section #gfx-preset', { state: 'visible' });
     await page.locator('.rp-settings-section input[type="checkbox"]').first().check();
     await page.locator('select[aria-label="Palette"]').selectOption('colorblind');
     // regression: this toggle used to call a missing action and throw
@@ -208,6 +261,10 @@ async function mobilePass() {
     await page.goto(BASE, { waitUntil: 'load' });
     await page.waitForSelector('.rp-overlay:not([hidden]) .rp-title', { timeout: 15000 });
     await page.screenshot({ path: shot('title') });
+  });
+
+  await step('[mobile] settings → graphics presets, override, persistence', async () => {
+    await graphicsSettings(page, shot, true);
   });
 
   await step('[mobile] journey stage 1 → active', async () => {

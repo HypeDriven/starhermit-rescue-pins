@@ -1,6 +1,9 @@
 // Rescue Pins — semantic HTML DOM shell over/beside the canvas.
 // All screens, keyboard operation, ARIA live regions, accessibility mirror.
 
+import { PRESETS, CATEGORIES, presetTier, resolve, describe, choosePreset, setOverride } from './gfx.js';
+import { gfxStrings } from './gfx-i18n.js';
+
 export function createUI(root, actions, settings) {
   root.innerHTML = '';
   root.className = 'rp-root';
@@ -108,7 +111,11 @@ export function createUI(root, actions, settings) {
     p.appendChild(row);
     const done = Object.keys(prog.completed || {}).length;
     p.appendChild(el('p', 'rp-dim', done ? `Journey progress: ${done}/40 stages cleared` : 'New here? Press Play, then pick Learn for five short lessons.'));
-    p.appendChild(button('How to play', 'rp-btn-quiet', () => actions.showHelp('title')));
+    const row2 = el('div', 'rp-row');
+    const settingsBtn = button('⚙ ' + gfxStrings().settings, 'rp-btn-quiet', () => actions.showSettings());
+    settingsBtn.id = 'rp-settings-btn';
+    row2.append(button('How to play', 'rp-btn-quiet', () => actions.showHelp('title')), settingsBtn);
+    p.appendChild(row2);
     showOverlay(p);
   }
 
@@ -228,6 +235,22 @@ export function createUI(root, actions, settings) {
     const p = el('section', 'rp-panel');
     p.appendChild(el('h2', '', 'Paused'));
     p.appendChild(button('Resume', 'rp-btn-primary', () => actions.resume()));
+    p.appendChild(settingsSections(true));
+    showOverlay(p);
+  }
+
+  // Settings reachable from the title screen (the pause screen embeds the same sections)
+  function settingsScreen() {
+    const T = gfxStrings();
+    const p = el('section', 'rp-panel');
+    p.appendChild(el('h2', '', T.settings));
+    p.appendChild(settingsSections(false));
+    p.appendChild(button(T.back, 'rp-btn-quiet', () => actions.showTitle()));
+    showOverlay(p);
+  }
+
+  function settingsSections(inGame) {
+    const T = gfxStrings();
     const secs = el('div', 'rp-settings-sections');
     // audio
     secs.appendChild(settingsSection('Audio', (sec) => {
@@ -237,9 +260,13 @@ export function createUI(root, actions, settings) {
       sec.appendChild(toggle('Mute all', settings.audio.muted, v => actions.setMuted(v)));
       sec.appendChild(toggle('Captions', settings.captions !== false, v => actions.setCaptions(v)));
     }));
-    // graphics
-    secs.appendChild(settingsSection('Graphics', (sec) => {
-      sec.appendChild(select('Quality tier', ['auto', 'low', 'medium', 'high'], settings.graphics.tier, v => actions.setTier(v)));
+    // graphics quality (presets, per-effect overrides, render scale)
+    const gfxSec = settingsSection(T.graphics, (sec) => graphicsControls(sec));
+    gfxSec.classList.add('rp-gfx');
+    gfxSec.id = 'rp-gfx-section';
+    secs.appendChild(gfxSec);
+    // display / readability
+    secs.appendChild(settingsSection(T.display, (sec) => {
       sec.appendChild(select('Palette', ['default', 'colorblind', 'highcontrast'], settings.graphics.palette, v => actions.setPalette(v)));
       sec.appendChild(toggle('Reduced motion', settings.graphics.reducedMotion, v => actions.setReducedMotion(v)));
       sec.appendChild(toggle('High contrast', settings.graphics.highContrast, v => actions.setHighContrast(v)));
@@ -255,15 +282,102 @@ export function createUI(root, actions, settings) {
       sec.appendChild(el('p', 'rp-dim', 'Every board state is mirrored as text for screen readers. No gameplay information is audio-only or color-only.'));
       sec.appendChild(button('Replay tutorial', '', () => actions.startMode('learn')));
     }));
-    // help + leave
-    secs.appendChild(settingsSection('Help', (sec) => {
-      sec.appendChild(button('Rule cards', '', () => actions.showHelp()));
-    }));
-    secs.appendChild(settingsSection('Leave', (sec) => {
-      sec.appendChild(button('Save & quit to title', 'rp-btn-danger', () => actions.quitToTitle()));
-    }));
-    p.appendChild(secs);
-    showOverlay(p);
+    if (inGame) {
+      // help + leave
+      secs.appendChild(settingsSection('Help', (sec) => {
+        sec.appendChild(button('Rule cards', '', () => actions.showHelp()));
+      }));
+      secs.appendChild(settingsSection('Leave', (sec) => {
+        sec.appendChild(button('Save & quit to title', 'rp-btn-danger', () => actions.quitToTitle()));
+      }));
+    }
+    return secs;
+  }
+
+  // Graphics controls: every change applies immediately, persists, and the
+  // section re-renders so "From preset (…)" labels and the summary stay true.
+  function graphicsControls(sec) {
+    const T = gfxStrings();
+    const saved = actions.gfxSaved();
+    const info = actions.gfxInfo();
+    const detected = info ? info.detected : 'low';
+    const r = info ? info.resolved : resolve(saved, detected);
+    const apply = (next, focusId) => {
+      actions.setGfx(next);
+      const legend = sec.querySelector('legend');
+      sec.innerHTML = '';
+      if (legend) sec.appendChild(legend);
+      graphicsControls(sec);
+      const f = focusId && sec.querySelector('#' + focusId);
+      if (f) f.focus();
+    };
+    const tierName = (t) => T.tier[t] || t;
+
+    const presetOpts = [['auto', T.auto.replace('{tier}', T.preset[detected])], ...PRESETS.map(p => [p, T.preset[p]])];
+    sec.appendChild(selectKV('gfx-preset', T.quality, presetOpts, PRESETS.includes(saved.preset) ? saved.preset : 'auto',
+      v => apply(choosePreset(saved, v), 'gfx-preset')));
+
+    // render scale 50–200 %
+    const pct = Math.round((Number(saved.render_scale) || 1) * 100);
+    const w = el('label', 'rp-field rp-scale', T.renderScale + ' ');
+    const box = el('span', 'rp-scale-box');
+    const range = el('input');
+    range.type = 'range'; range.min = '50'; range.max = '200'; range.step = '10'; range.value = String(pct);
+    range.id = 'gfx-render-scale'; range.dataset.gfx = 'render_scale';
+    range.setAttribute('aria-label', T.renderScale);
+    const val = el('output', 'rp-scale-val', pct + '%');
+    range.addEventListener('input', () => { val.textContent = range.value + '%'; });
+    range.addEventListener('change', () => apply({ ...saved, render_scale: Number(range.value) / 100 }, 'gfx-render-scale'));
+    box.append(range, val);
+    w.appendChild(box);
+    sec.appendChild(w);
+
+    for (const [cat, tiers] of Object.entries(CATEGORIES)) {
+      const opts = [['preset', T.fromPreset.replace('{tier}', tierName(presetTier(r.preset, cat)))], ...tiers.map(t => [t, tierName(t)])];
+      sec.appendChild(selectKV('gfx-' + cat, T.cat[cat], opts, tiers.includes(saved[cat]) ? saved[cat] : 'preset',
+        v => apply(setOverride(saved, cat, v), 'gfx-' + cat)));
+    }
+    sec.appendChild(toggleId('gfx-adaptive', T.adaptive, r.adaptive, v => apply({ ...saved, adaptive: v }, 'gfx-adaptive')));
+    sec.appendChild(toggleId('gfx-show-fps', T.showFps, r.showFps, v => apply({ ...saved, show_fps: v }, 'gfx-show-fps')));
+
+    const summary = el('p', 'rp-dim rp-gfx-summary');
+    summary.id = 'gfx-summary';
+    summary.setAttribute('aria-live', 'polite');
+    const paint = () => {
+      const i = actions.gfxInfo();
+      const res = i ? i.resolved : r;
+      summary.textContent = `${(i && i.gpu) || T.unknownGpu} · ${describe(res, i ? i.pixels : null, T.summary)}`;
+      summary.dataset.preset = res.preset;
+      note.hidden = !(i && i.postFailed);
+    };
+    const note = el('p', 'rp-dim rp-gfx-note', T.postUnavailable);
+    note.id = 'gfx-post-note';
+    note.setAttribute('role', 'note');
+    sec.append(summary, note);
+    paint();
+    setTimeout(paint, 200); // pixel size / post state settle on the next frames
+  }
+
+  function selectKV(id, label, options, value, onChange) {
+    const w = el('label', 'rp-field', label + ' ');
+    const s = el('select');
+    s.id = id; s.dataset.gfx = id.replace(/^gfx-/, '');
+    s.setAttribute('aria-label', label);
+    for (const [v, text] of options) {
+      const opt = el('option', '', text);
+      opt.value = v;
+      if (v === value) opt.selected = true;
+      s.appendChild(opt);
+    }
+    s.addEventListener('change', () => onChange(s.value));
+    w.appendChild(s);
+    return w;
+  }
+  function toggleId(id, label, value, onChange) {
+    const w = toggle(label, value, onChange);
+    const i = w.querySelector('input');
+    i.id = id; i.dataset.gfx = id.replace(/^gfx-/, '');
+    return w;
   }
 
   function settingsSection(title, fill) {
@@ -425,7 +539,7 @@ export function createUI(root, actions, settings) {
   function caption(text) { if (settings.captions !== false) announce(liveCaption, text); }
 
   return { titleScreen, modeSelectScreen, journeyScreen, progressionScreen, countdownScreen,
-           resultsScreen, pauseScreen, helpScreen, hud, pinSelector, updateMirror, coach,
+           resultsScreen, pauseScreen, settingsScreen, helpScreen, hud, pinSelector, updateMirror, coach,
            clearOverlay, showWebglFallback, error, caption, setSync,
            canvasHost, el };
 }
