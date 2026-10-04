@@ -3,6 +3,7 @@
 
 import { PRESETS, CATEGORIES, presetTier, resolve, describe, choosePreset, setOverride } from './gfx.js';
 import { gfxStrings } from './gfx-i18n.js';
+import { shText } from './sh-i18n.js';
 
 export function createUI(root, actions, settings) {
   root.innerHTML = '';
@@ -49,6 +50,19 @@ export function createUI(root, actions, settings) {
   const overlay = el('div', 'rp-overlay');
   overlay.hidden = true;
   root.appendChild(overlay);
+
+  // transient confirmation toast (visible on every screen)
+  const toastBox = el('p', 'rp-toast');
+  toastBox.setAttribute('role', 'status');
+  toastBox.hidden = true;
+  root.appendChild(toastBox);
+  let toastTimer = null;
+  function toast(msg, ms = 3200) {
+    toastBox.textContent = msg;
+    toastBox.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { toastBox.hidden = true; }, ms);
+  }
 
   // persistent sync badge: lives in the right rail; hud()/pinSelector()
   // re-append it after their periodic rail rebuilds
@@ -115,7 +129,17 @@ export function createUI(root, actions, settings) {
     const settingsBtn = button('⚙ ' + gfxStrings().settings, 'rp-btn-quiet', () => actions.showSettings());
     settingsBtn.id = 'rp-settings-btn';
     row2.append(button('How to play', 'rp-btn-quiet', () => actions.showHelp('title')), settingsBtn);
+    if (opts && opts.signedIn) {
+      const inv = button(shText('invite'), 'rp-btn-quiet', () => actions.invite());
+      inv.id = 'rp-invite-btn';
+      row2.append(inv);
+    }
     p.appendChild(row2);
+    if (opts && opts.canSignIn && !opts.signedIn) {
+      const si = button(shText('signIn'), '', () => actions.signIn());
+      si.id = 'rp-signin-btn';
+      p.appendChild(si);
+    }
     showOverlay(p);
   }
 
@@ -423,12 +447,12 @@ export function createUI(root, actions, settings) {
     p.appendChild(el('h2', '', 'How to play'));
     const cards = el('div', 'rp-rule-cards');
     const rules = [
-      ['Pull pins', 'Tap or click a brass pin to select it, then tap it again to pull it. On a keyboard, choose a pin with the arrow keys and press ' + bindings.confirm + '. The pin list in the Status rail works too: one press pulls that pin.'],
+      ['Pull pins', 'Tap or click a brass pin to select it, then tap it again to pull it. On a keyboard, choose a pin with ' + bindings.select + ' and press ' + bindings.confirm + '. The pin list in the Status rail works too: one press pulls that pin.'],
       ['Water rescues', 'Water falls and flows sideways. A villager touched by water is rescued.'],
       ['Lava kills', 'A villager touched by lava is lost. The stage ends.'],
       ['Steam', 'Water and lava in the same chamber neutralize into inert steam.'],
       ['Score', 'Save villagers, waste no pins: beating par and avoiding mistakes raises your score.'],
-      ['Stuck?', 'Press H (or the Hint button) for a pin on a winning line. Esc pauses and opens settings. U undoes in Learn and Practice.'],
+      ['Stuck?', `Press ${bindings.hint} (or the Hint button) for a pin on a winning line. ${bindings.pause} pauses and opens settings. ${bindings.undo} undoes in Learn and Practice.`],
     ];
     for (const [t, d] of rules) {
       const c = el('article', 'rp-rule-card');
@@ -540,6 +564,6 @@ export function createUI(root, actions, settings) {
 
   return { titleScreen, modeSelectScreen, journeyScreen, progressionScreen, countdownScreen,
            resultsScreen, pauseScreen, settingsScreen, helpScreen, hud, pinSelector, updateMirror, coach,
-           clearOverlay, showWebglFallback, error, caption, setSync,
+           clearOverlay, showWebglFallback, error, caption, setSync, toast,
            canvasHost, el };
 }

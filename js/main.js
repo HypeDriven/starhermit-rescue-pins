@@ -4,7 +4,8 @@
 import { solveState } from './rules.js';
 import { getTutorial, getJourney, getDailyLevel, dailySeedForDate, THEMES, findLevel } from './content.js';
 import { createSession, loadSettings, saveSettings, loadProgression, saveProgression, defaultStorage } from './session.js';
-import { createPlatform } from './platform.js';
+import { createPlatform, keyLabel } from './platform.js';
+import { shText } from './sh-i18n.js';
 import { createRenderer } from './render.js';
 import { createUI } from './ui.js';
 import { createAudio } from './audio.js';
@@ -21,7 +22,18 @@ if (!settings.graphics.gfx || typeof settings.graphics.gfx !== 'object') {
 let prog = loadProgression(storage);
 // StarHermit platform adapter: launch token, nickname, cloud save, boards.
 // Without a token every method no-ops and the game plays exactly as before.
-const platform = createPlatform({ onSync: () => { if (ui) ui.setSync(platform.syncLabel()); } });
+const platform = createPlatform({
+  onSync: () => { if (ui) ui.setSync(platform.syncLabel()); },
+  onAuth: (a) => {
+    if (!ui) return;
+    if (!a.signedIn) ui.toast(shText('signedOut'));
+    if (!sess || sess.session.screen === 'title') ui.titleScreen(prog, titleOpts());
+  },
+});
+function persistSettings() {
+  saveSettings(settings, storage);
+  platform.mirrorSettings(settings); // per-player settings KV (no-op unless hosted)
+}
 function persistProgress() {
   saveProgression(prog, storage);
   platform.queueCloudSave(prog); // no-op unless hosted; localStorage stays the cache
@@ -33,51 +45,16 @@ function soundCaption(ev) {
            win: 'victory chime', lose: 'low fail tone', invalid: 'error buzz', undo: 'rewind' }[ev] || ev;
 }
 
-// ---- server time sync + daily API with graceful offline fallback ----
-// Hosted (StarHermit): same-origin platform /api with the Bearer launch token;
-// the daily board is the platform leaderboard (read-only). Local dev: the
-// repo's own server.js serves these routes, daily verify included.
-let clockOffsetMs = 0;
-let apiOnline = false;
-async function syncClock() {
-  try {
-    const t0 = Date.now();
-    const res = await fetch('/api/v1/time', { headers: platform.authHeaders(), signal: AbortSignal.timeout(3000) });
-    if (!res.ok) throw new Error('bad');
-    const body = await res.json();
-    clockOffsetMs = body.serverTime - Math.round((t0 + Date.now()) / 2);
-    apiOnline = true;
-  } catch { apiOnline = false; }
-}
-function serverNow() { return Date.now() + clockOffsetMs; }
-
-async function submitDaily(envelope, name) {
-  if (!apiOnline) return { ok: false, message: 'Offline — score kept locally only.' };
-  try {
-    const res = await fetch('/api/v1/daily/verify', {
-      method: 'POST', headers: { 'content-type': 'application/json', ...platform.authHeaders() },
-      body: JSON.stringify({ envelope, name: (name || 'guest').slice(0, 24) }),
-      signal: AbortSignal.timeout(5000),
-    });
-    if (res.status === 404) return { ok: false, message: 'Daily ranking is unavailable on this host — score kept locally only.' };
-    const body = await res.json();
-    if (!res.ok) return { ok: false, message: 'Rejected: ' + (body.error || res.status) };
-    return { ok: true, message: `Daily score accepted: ${body.score.total}` };
-  } catch { return { ok: false, message: 'Offline — score kept locally only.' }; }
+// ---- daily: device clock, local score; hosted shows the read-only platform board ----
+// Clients never submit scores anywhere. Standalone the game makes no network
+// request: the daily seed derives from the device clock's UTC day.
+function dailyResult() {
+  return { ok: true, message: platform.hosted() ? 'Daily score kept on your profile.' : 'Daily score kept locally.' };
 }
 
-async function fetchDailyBoard(seed) {
-  if (!apiOnline) return null;
-  if (platform.hosted()) {
-    // Platform leaderboard is read-only; the game never submits scores to it.
-    try { return await platform.fetchLeaderboardEntries(5); } catch { return null; }
-  }
-  try {
-    const res = await fetch('/api/v1/leaderboard?seed=' + (seed >>> 0), { signal: AbortSignal.timeout(5000) });
-    if (!res.ok) return null;
-    const body = await res.json();
-    return Array.isArray(body.entries) && body.entries.length ? body.entries.slice(0, 5) : null;
-  } catch { return null; }
+async function fetchDailyBoard() {
+  if (!platform.hosted()) return null;
+  try { return await platform.fetchLeaderboardEntries(5); } catch { return null; }
 }
 
 // ---- renderer (with WebGL fallback) ----
@@ -237,8 +214,8 @@ async function finishRound(term) {
     persistProgress();
   }
   if (sess.session.mode === 'daily' && term.won) {
-    dailySubmit = await submitDaily(sess.replayEnvelope(), platform.displayName() || 'guest');
-    dailyBoard = await fetchDailyBoard(sess.session.level.daily);
+    dailySubmit = dailyResult();
+    dailyBoard = await fetchDailyBoard();
   }
   sess.transition('results', term.reason);
   ui.coach(null);
@@ -255,7 +232,8 @@ function hasSavedGame() {
 
 // identity + sync status for the title/profile name slots (nulls when local)
 function titleOpts() {
-  return { hasSave: hasSavedGame(), player: platform.displayName(), sync: platform.syncLabel() };
+  return { hasSave: hasSavedGame(), player: platform.displayName(), sync: platform.syncLabel(),
+           signedIn: platform.hosted(), canSignIn: platform.canSignIn() };
 }
 function accountLine() {
   if (platform.hosted()) return `Signed in as ${platform.displayName()} · ${platform.syncLabel() || 'cloud save'}`;
@@ -283,11 +261,11 @@ const actions = {
     pendingMode = mode === 'learn' ? 'tutorial' : mode;
     if (mode === 'learn') { lesson = getTutorial()[0]; startLevel(lesson.level, 'tutorial', lesson); }
     else if (mode === 'journey') ui.journeyScreen(prog, journey);
-    else if (mode === 'daily') startLevel(getDailyLevel(dailySeedForDate(new Date(serverNow()))), 'daily');
+    else if (mode === 'daily') startLevel(getDailyLevel(dailySeedForDate(new Date())), 'daily');
     else if (mode === 'practice') ui.journeyScreen(prog, journey);
   },
   startLevel: (lv) => startLevel(lv, pendingMode === 'tutorial' ? 'tutorial' : pendingMode),
-  startDaily: () => startLevel(getDailyLevel(dailySeedForDate(new Date(serverNow()))), 'daily'),
+  startDaily: () => startLevel(getDailyLevel(dailySeedForDate(new Date())), 'daily'),
   pullPin,
   undo: () => {
     if (!sess) return;
@@ -337,20 +315,32 @@ const actions = {
     if (sess) { sess.saveSnapshot('rescue-pins:last'); sess.transition('title', 'quit'); }
     ui.titleScreen(prog, titleOpts());
   },
-  showHelp: (from) => { helpReturn = from === 'title' ? 'title' : 'pause'; ui.helpScreen({ confirm: 'Enter' }); },
+  showHelp: (from) => {
+    helpReturn = from === 'title' ? 'title' : 'pause';
+    const b = platform.bindings();
+    const keys = (a) => (b[a] || []).map(keyLabel).join(' / ');
+    ui.helpScreen({ confirm: keys('pull'), select: keys('prev') + ', ' + keys('next'), hint: keys('hint'), pause: keys('pause'), undo: keys('undo') });
+  },
+  signIn: () => platform.signIn(),
+  invite: async () => {
+    const url = platform.inviteLink();
+    if (!url) return;
+    try { await navigator.clipboard.writeText(url); ui.toast(shText('inviteCopied')); }
+    catch { ui.toast(shText('inviteLink', { url })); }
+  },
   backFromHelp: () => { if (helpReturn === 'title') actions.showTitle(); else ui.pauseScreen(); },
-  setVolume: (bus, v) => { settings.audio[bus] = v; audio.applyVolumes(); saveSettings(settings, storage); },
-  setMuted: (m) => { audio.setMuted(m); saveSettings(settings, storage); },
-  setCaptions: (c) => { settings.captions = c; saveSettings(settings, storage); },
+  setVolume: (bus, v) => { settings.audio[bus] = v; audio.applyVolumes(); persistSettings(); },
+  setMuted: (m) => { audio.setMuted(m); persistSettings(); },
+  setCaptions: (c) => { settings.captions = c; persistSettings(); },
   showSettings: () => ui.settingsScreen(),
   gfxSaved: () => settings.graphics.gfx || {},
   gfxInfo: () => (view ? view.graphicsInfo() : null),
-  setGfx: (next) => { settings.graphics.gfx = next; saveSettings(settings, storage); if (view) view.setGraphics(next); },
-  setPalette: (p) => { settings.graphics.palette = p; saveSettings(settings, storage); rebuildView(); },
-  setReducedMotion: (m) => { settings.graphics.reducedMotion = m; saveSettings(settings, storage); rebuildView(); },
-  setHighContrast: (hc) => { settings.graphics.highContrast = hc; document.body.classList.toggle('hc', hc); saveSettings(settings, storage); },
-  setTextSize: (t) => { settings.graphics.textSize = t; document.body.classList.toggle('big-text', t === 'large'); saveSettings(settings, storage); },
-  setLeftHanded: (v) => { settings.controls.leftHanded = v; document.body.classList.toggle('lefty', v); saveSettings(settings, storage); },
+  setGfx: (next) => { settings.graphics.gfx = next; persistSettings(); if (view) view.setGraphics(next); },
+  setPalette: (p) => { settings.graphics.palette = p; persistSettings(); rebuildView(); },
+  setReducedMotion: (m) => { settings.graphics.reducedMotion = m; persistSettings(); rebuildView(); },
+  setHighContrast: (hc) => { settings.graphics.highContrast = hc; document.body.classList.toggle('hc', hc); persistSettings(); },
+  setTextSize: (t) => { settings.graphics.textSize = t; document.body.classList.toggle('big-text', t === 'large'); persistSettings(); },
+  setLeftHanded: (v) => { settings.controls.leftHanded = v; document.body.classList.toggle('lefty', v); persistSettings(); },
   continueSaved: () => {
     let doc = null;
     try { doc = JSON.parse(storage.getItem('rescue-pins:last') || 'null'); } catch { doc = null; }
@@ -426,27 +416,30 @@ function wirePointer() {
 }
 
 // ---- keyboard ----
+// Routed by KeyboardEvent.code through the player's platform bindings
+// (control.* in starhermit.txt; defaults in platform.js).
 window.addEventListener('keydown', (e) => {
   if (!sess) return;
+  const action = platform.actionFor(e.code);
   const screen = sess.session.screen;
-  if (screen === 'paused') { if (e.key === 'Escape') actions.resume(); return; }
+  if (screen === 'paused') { if (action === 'pause') actions.resume(); return; }
   if (screen !== 'active' && screen !== 'tutorial') return;
   // Pause/undo/hint/camera must stay reachable even when no pins remain
   // (e.g. a dead-end board in practice, where undo is the only way back).
-  switch (e.key) {
-    case 'Escape': actions.pause(); return;
-    case 'u': case 'U': actions.undo(); return;
-    case 'h': case 'H': actions.hint(); return;
-    case 'c': case 'C': if (view) view.resize(); audio.play('ack'); return;
+  switch (action) {
+    case 'pause': actions.pause(); return;
+    case 'undo': actions.undo(); return;
+    case 'hint': actions.hint(); return;
+    case 'camera': if (view) view.resize(); audio.play('ack'); return;
   }
   const legal = sess.legalActions().map(a => a.pinId);
   if (!legal.length) return;
   const i = Math.max(0, legal.indexOf(selectedPin));
   const move = (d) => { selectedPin = legal[(i + d + legal.length) % legal.length]; audio.play('ack'); refreshHud(); };
-  switch (e.key) {
-    case 'ArrowLeft': case 'ArrowUp': case 'a': case 'w': move(-1); e.preventDefault(); break;
-    case 'ArrowRight': case 'ArrowDown': case 'd': case 's': move(1); e.preventDefault(); break;
-    case 'Enter': case ' ': if (selectedPin) { pullPin(selectedPin); e.preventDefault(); } break;
+  switch (action) {
+    case 'prev': move(-1); e.preventDefault(); break;
+    case 'next': move(1); e.preventDefault(); break;
+    case 'pull': if (selectedPin) { pullPin(selectedPin); e.preventDefault(); } break;
   }
 });
 
@@ -476,6 +469,9 @@ function loop(now) {
 async function boot() {
   ui = createUI(root, actions, settings);
   platform.start(); // reads the launch token (ui exists for sync callbacks)
+  // per-player settings KV: the platform value wins over local values
+  if (await platform.loadSettings(settings)) { saveSettings(settings, storage); audio.applyVolumes(); }
+  await platform.loadBindings();
   document.body.classList.toggle('hc', !!settings.graphics.highContrast);
   document.body.classList.toggle('big-text', settings.graphics.textSize === 'large');
   document.body.classList.toggle('lefty', !!settings.controls.leftHanded);
@@ -492,8 +488,6 @@ async function boot() {
   const t0 = performance.now();
   journey = getJourney(); // deterministic, solver-verified at first use (~1s)
   void t0;
-
-  await syncClock();
 
   // Hosted: prefer the remote cloud save over the local cache (conflict rule
   // per platform contract); queue a mirror upload so the slot exists.

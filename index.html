@@ -39,6 +39,10 @@
   .rp-tray { display: flex; gap: 8px; justify-content: center; padding: 8px;
     padding-bottom: calc(8px + var(--sab)); background: var(--panel); border-top: 1px solid var(--edge); flex-wrap: wrap; }
   body.lefty .rp-tray { flex-direction: row-reverse; }
+  .rp-toast { position: fixed; z-index: 60; left: 50%; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
+    max-width: calc(100vw - 32px); margin: 0; padding: 10px 16px; border-radius: 10px; overflow-wrap: anywhere;
+    background: var(--btn, #1d2a33); color: var(--fg, #fff); border: 1px solid var(--btn-edge, #456); }
+  .rp-toast[hidden] { display: none; }
   .rp-btn { min-height: 44px; min-width: 44px; padding: 10px 16px; margin: 4px;
     background: var(--btn); color: var(--fg); border: 2px solid var(--btn-edge); border-radius: 10px;
     font: inherit; font-weight: 600; cursor: pointer; }
@@ -144,6 +148,7 @@
   }
 </style>
 <script src="browser-guard.js"></script>
+<script src="starhermit-sdk.js"></script>
 </head>
 <body>
 <header class="sr-only"><h1>Rescue Pins</h1></header>

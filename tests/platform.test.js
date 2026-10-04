@@ -1,173 +1,135 @@
-// Platform adapter tests: launch-token read/strip/decode, Bearer on every
-// call, nickname resolution (profile, never /api/v1/me), cloud save
-// (zip+base64, remote-preferred load, debounced PUT), read-only leaderboard.
+// Platform adapter tests over the shipped StarHermit SDK with a stubbed fetch
+// and launch fragment: token read/strip, Bearer on every call, nickname
+// (profile, never /api/v1/me), checksummed cloud save round trip on the
+// `game:<slug>` slot, settings KV, control bindings, read-only leaderboard,
+// and no network traffic when standalone.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createPlatform, zipStore, unzipFirstEntry, bytesToBase64 } from '../js/platform.js';
+import { readFileSync } from 'node:fs';
+import { createPlatform } from '../js/platform.js';
 
-function b64url(obj) {
-  return Buffer.from(JSON.stringify(obj)).toString('base64url');
-}
-function makeToken(payload) {
-  return b64url({ alg: 'none' }) + '.' + b64url(payload) + '.sig';
-}
+const SDK = (() => {
+  const m = { exports: {} };
+  new Function('module', 'exports', readFileSync(new URL('../starhermit-sdk.js', import.meta.url), 'utf8'))(m, m.exports);
+  return m.exports;
+})();
+
+const b64u = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
 const USER = '2712e04e-461b-4d23-81ae-e40b429128a8';
-const TOKEN = makeToken({ sub: USER, game_scope: 'rescue-pins' });
+const TOKEN = b64u({ alg: 'none' }) + '.' + b64u({ sub: USER, game_scope: 'rescue-pins', exp: 9999999999 }) + '.sig';
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const timers = { setTimeout: (fn, ms) => (ms > 5000 ? 0 : setTimeout(fn, ms)), clearTimeout: (t) => t && clearTimeout(t) };
 
-// minimal browser shims so createPlatform().start() runs under node:test
-function shimBrowser(hash) {
-  const calls = [];
-  const state = { hash };
-  globalThis.window = {
-    location: { hash, pathname: '/', search: '' },
-    history: { replaceState: (a, b, url) => { state.stripped = url; } },
-    addEventListener: () => {},
-  };
-  globalThis.document = { addEventListener: () => {}, hidden: false };
-  return state;
+function fakeWindow(hash, hostname = 'localhost') {
+  const loc = { hash, pathname: '/', search: '', hostname, href: `https://${hostname}/${hash}`, origin: `https://${hostname}` };
+  return { location: loc, history: { state: null, replaceState(_s, _t, url) { loc.hash = url.includes('#') ? url.slice(url.indexOf('#')) : ''; } },
+           addEventListener() {} };
 }
-function stubFetch(handler) {
+
+function stubNet() {
   const calls = [];
-  globalThis.fetch = async (path, options = {}) => {
-    calls.push({ path, options });
-    return handler(path, options);
+  const store = { save: null, patches: [] };
+  const fetch = async (url, init = {}) => {
+    const method = init.method || 'GET';
+    calls.push({ method, url, auth: init.headers && init.headers.Authorization });
+    const json = (code, body) => new Response(JSON.stringify(body), { status: code, headers: { 'Content-Type': 'application/json' } });
+    if (url === `/api/v1/users/${USER}/profile`) return json(200, { username: 'mira_x', nickname: 'Mira' });
+    if (url === '/api/v1/me/cloud-saves/game%3Arescue-pins') {
+      if (method === 'GET') return store.save ? new Response(store.save, { status: 200 }) : json(404, {});
+      if (method === 'PUT') { store.save = Buffer.from(JSON.parse(init.body).dataBase64, 'base64'); return json(200, {}); }
+    }
+    if (url === '/api/v1/games/rescue-pins/settings') {
+      if (method === 'GET') return json(200, { settings: { audio: { music: 0.1 }, captions: false } });
+      if (method === 'PATCH') { store.patches.push(JSON.parse(init.body).settings); return json(200, {}); }
+    }
+    if (url === '/api/v1/games/rescue-pins/controls') return json(200, { actions: [{ action: 'hint', codes: ['KeyJ'] }] });
+    if (url === '/api/v1/games/rescue-pins') return json(200, { leaderboardId: 'lb-1' });
+    if (url.startsWith('/api/v1/leaderboards/lb-1/entries')) return json(200, { items: [{ userId: USER, score: 1500 }] });
+    return json(404, {});
   };
-  return calls;
+  return { calls, store, fetch };
 }
-const jsonRes = (body, status = 200) => ({ ok: status >= 200 && status < 300, status, json: async () => body });
-const notFound = () => jsonRes({ error: 'not-found' }, 404);
 
-test('zip writer output round-trips through the stored-entry reader', () => {
-  const doc = JSON.stringify({ v: 1, completed: { a: true }, rescuedTotal: 7 });
-  const bytes = zipStore('save.json', new TextEncoder().encode(doc));
-  assert.equal(new TextDecoder().decode(unzipFirstEntry(bytes)), doc);
-});
-
-test('start(): fragment token read once, stripped, sub/game_scope decoded', async () => {
-  const state = shimBrowser('#game_token=' + TOKEN + '&session_id=abc');
-  const calls = stubFetch(() => jsonRes({ token: TOKEN }));
+function boot(win, net) {
+  globalThis.window = win;
+  globalThis.document = { addEventListener() {}, hidden: false };
+  globalThis.StarHermit = SDK.create({ window: win, fetch: net.fetch, ...timers });
   const p = createPlatform();
   p.start();
-  assert.ok(p.hosted());
-  assert.equal(state.stripped, '/');
-  assert.equal(p.displayName(), 'Player ' + USER.slice(0, 8)); // fallback before profile
-  // refresh POST goes to the scoped launch-token route with the Bearer header
-  await new Promise(r => setTimeout(r, 0));
-  const refresh = calls.find(c => c.options.method === 'POST');
-  assert.ok(refresh, 'refresh call made');
-  assert.match(refresh.path, /^\/api\/v1\/games\/rescue-pins\/launch-token$/);
-  assert.equal(refresh.options.headers.authorization, 'Bearer ' + TOKEN);
-  delete globalThis.window; delete globalThis.document; delete globalThis.fetch;
+  return p;
+}
+function cleanup() { delete globalThis.window; delete globalThis.document; delete globalThis.StarHermit; }
+
+test('hosted: token, nickname, checksummed cloud save, settings KV, bindings, board', async () => {
+  const net = stubNet();
+  const win = fakeWindow('#game_token=' + TOKEN + '&session_id=abc');
+  const p = boot(win, net);
+  try {
+    assert.ok(p.hosted());
+    assert.equal(win.location.hash, '', 'fragment stripped');
+    assert.equal(globalThis.StarHermit.slug, 'rescue-pins');
+    await sleep(10);
+    assert.equal(p.displayName(), 'Mira');
+    assert.ok(!net.calls.some((c) => c.url === '/api/v1/me'));
+
+    assert.equal(await p.loadCloudSave(), null); // empty slot
+    p.queueCloudSave({ completed: { a: true }, rescuedTotal: 7 });
+    p.flushCloudSave();
+    await sleep(20);
+    assert.ok(net.calls.some((c) => c.method === 'PUT' && c.url === '/api/v1/me/cloud-saves/game%3Arescue-pins'));
+    const doc = await p.loadCloudSave();
+    assert.equal(doc.rescuedTotal, 7, 'round trip validated by checksum');
+
+    const settings = { audio: { music: 0.5, effects: 0.8 }, controls: { leftHanded: false }, captions: true, tutorialDone: false };
+    assert.equal(await p.loadSettings(settings), true);
+    assert.deepEqual(settings.audio, { music: 0.1, effects: 0.8 });
+    assert.equal(settings.captions, false);
+    settings.controls.leftHanded = true;
+    p.mirrorSettings(settings);
+    await sleep(700);
+    assert.deepEqual(net.store.patches.at(-1), { controls: { leftHanded: true } });
+
+    await p.loadBindings();
+    assert.equal(p.actionFor('KeyJ'), 'hint');
+    assert.equal(p.actionFor('KeyH'), null);
+    assert.equal(p.actionFor('Space'), 'pull');
+
+    assert.deepEqual(await p.fetchLeaderboardEntries(5), [{ name: 'Mira', score: 1500 }]);
+    assert.ok(net.calls.every((c) => c.auth === 'Bearer ' + TOKEN), 'Bearer on every call');
+    assert.ok(p.inviteLink().includes(`/game-invite/${USER}/rescue-pins`));
+  } finally { cleanup(); }
 });
 
-test('start(): malformed token stays local; query fallback works for dev', async () => {
-  shimBrowser('#game_token=not-a-jwt');
-  stubFetch(() => notFound());
-  const p = createPlatform();
-  p.start();
-  assert.equal(p.hosted(), false);
-
-  const state = shimBrowser('');
-  globalThis.window.location.search = '?token=' + TOKEN;
-  const p2 = createPlatform();
-  p2.start();
-  assert.ok(p2.hosted());
-  assert.equal(p2.displayName(), 'Player ' + USER.slice(0, 8));
-  delete globalThis.window; delete globalThis.document; delete globalThis.fetch;
+test('tampered cloud save is rejected', async () => {
+  const net = stubNet();
+  const p = boot(fakeWindow('#game_token=' + TOKEN), net);
+  try {
+    await globalThis.StarHermit.writeSave(JSON.stringify({ v: 1, rescuedTotal: 99, checksum: 'bogus' }));
+    assert.equal(await p.loadCloudSave(), null);
+  } finally { cleanup(); }
 });
 
-test('nickname from /api/v1/users/{sub}/profile; never /api/v1/me, never usernames', async () => {
-  shimBrowser('#game_token=' + TOKEN);
-  const calls = stubFetch((path) => {
-    if (path === `/api/v1/users/${USER}/profile`) return jsonRes({ id: USER, username: 'mira_x', nickname: 'Mira' });
-    if (path.endsWith('/launch-token')) return jsonRes({ token: TOKEN });
-    return notFound();
-  });
-  const p = createPlatform();
-  p.start();
-  await new Promise(r => setTimeout(r, 10)); // let profile load
-  assert.equal(p.displayName(), 'Mira');
-  assert.ok(!calls.some(c => c.path === '/api/v1/me'));
-  delete globalThis.window; delete globalThis.document; delete globalThis.fetch;
-});
-
-test('cloud save: remote load preferred, invalid remote rejected; debounced PUT uploads a valid zip', async () => {
-  shimBrowser('#game_token=' + TOKEN);
-  const remote = { v: 1, completed: { daily: true }, bestScores: { daily: 900 }, tutorialDone: false,
-                   streakDays: [], achievements: [], rescuedTotal: 3, coachDone: false };
-  const remoteZip = bytesToBase64(zipStore('save.json', new TextEncoder().encode(
-    JSON.stringify({ ...remote, checksum: 'bogus' }))));
-  let savedBody = null;
-  const calls = stubFetch((path, options) => {
-    if (path.endsWith('/launch-token')) return jsonRes({ token: TOKEN });
-    if (path === `/api/v1/users/${USER}/profile`) return jsonRes({ id: USER, username: 'u', nickname: 'Mira' });
-    if (path === '/api/v1/me/cloud-saves/rescue-pins' && options.method === 'PUT') {
-      savedBody = JSON.parse(options.body);
-      return jsonRes({ ok: true });
-    }
-    return notFound();
-  });
-  const p = createPlatform();
-  p.start();
-  await new Promise(r => setTimeout(r, 10));
-  // 404 on GET = no remote save yet
-  assert.equal(await p.loadCloudSave(), null);
-  // tampered remote (bad checksum) must not clobber local progress
-  const handler = globalThis.fetch;
-  globalThis.fetch = async (path, options = {}) => {
-    calls.push({ path, options });
-    if (path === '/api/v1/me/cloud-saves/rescue-pins') {
-      return { ok: true, status: 200, arrayBuffer: async () => Buffer.from(remoteZip, 'base64') };
-    }
-    return notFound();
-  };
-  assert.equal(await p.loadCloudSave(), null);
-  // valid remote comes back validated
-  const { hashString, stableStringify } = await import('../js/rules.js');
-  const withSum = { ...remote, v: 1 };
-  withSum.checksum = hashString(stableStringify({ ...withSum, checksum: undefined }));
-  const goodZip = bytesToBase64(zipStore('save.json', new TextEncoder().encode(JSON.stringify(withSum))));
-  globalThis.fetch = async (path, options = {}) => {
-    calls.push({ path, options });
-    if (path === '/api/v1/me/cloud-saves/rescue-pins') {
-      return { ok: true, status: 200, arrayBuffer: async () => Buffer.from(goodZip, 'base64') };
-    }
-    return notFound();
-  };
-  const doc = await p.loadCloudSave();
-  assert.equal(doc.rescuedTotal, 3);
-  // queue a save: debounced PUT with Bearer + zip body
-  globalThis.fetch = handler;
-  p.queueCloudSave({ ...remote, rescuedTotal: 4 });
-  assert.match(p.syncLabel(), /saving/i);
-  await new Promise(r => setTimeout(r, 2200));
-  assert.equal(p.syncLabel(), 'Cloud save synced');
-  const put = calls.find(c => c.options.method === 'PUT');
-  assert.equal(put.options.headers.authorization, 'Bearer ' + TOKEN);
-  const uploaded = JSON.parse(new TextDecoder().decode(unzipFirstEntry(Buffer.from(savedBody.dataBase64, 'base64'))));
-  assert.equal(uploaded.rescuedTotal, 4);
-  assert.equal(uploaded.v, 1);
-  delete globalThis.window; delete globalThis.document; delete globalThis.fetch;
-});
-
-test('leaderboard: read-only entries resolved to nicknames; no leaderboardId → null', async () => {
-  shimBrowser('#game_token=' + TOKEN);
-  const calls = stubFetch((path) => {
-    if (path.endsWith('/launch-token')) return jsonRes({ token: TOKEN });
-    if (path === '/api/v1/games/rescue-pins') return jsonRes({ leaderboardId: 'lb-1' });
-    if (path === '/api/v1/leaderboards/lb-1/entries?page=1&pageSize=5') {
-      return jsonRes({ entries: [{ userId: USER, score: 1200 }, { userId: 'other-user-2', score: 900 }] });
-    }
-    if (path === `/api/v1/users/${USER}/profile`) return jsonRes({ id: USER, username: 'u', nickname: 'Mira' });
-    if (path === '/api/v1/users/other-user-2/profile') return jsonRes({ id: 'other-user-2', username: 'o', nickname: null });
-    return notFound();
-  });
-  const p = createPlatform();
-  p.start();
-  await new Promise(r => setTimeout(r, 10));
-  const entries = await p.fetchLeaderboardEntries(5);
-  assert.deepEqual(entries, [{ name: 'Mira', score: 1200 }, { name: 'Player other-us', score: 900 }]);
-  assert.ok(calls.every(c => !/leaderboards\/.*entries/.test(c.path) || c.options.method !== 'POST'));
-  delete globalThis.window; delete globalThis.document; delete globalThis.fetch;
+test('standalone: no network, local defaults, sign-in only on the platform host', async () => {
+  const net = stubNet();
+  const p = boot(fakeWindow('', 'rescue-pins.starhermit.com'), net);
+  try {
+    assert.equal(p.hosted(), false);
+    assert.equal(p.canSignIn(), true);
+    assert.equal(p.displayName(), null);
+    assert.equal(p.syncLabel(), null);
+    assert.equal(await p.loadCloudSave(), null);
+    p.queueCloudSave({ a: 1 });
+    p.flushCloudSave();
+    assert.equal(await p.loadSettings({ audio: {} }), false);
+    p.mirrorSettings({ audio: { music: 1 } });
+    await p.loadBindings();
+    assert.equal(p.actionFor('KeyH'), 'hint');
+    assert.equal(await p.fetchLeaderboardEntries(5), null);
+    assert.equal(p.inviteLink(), null);
+    await sleep(700);
+    assert.deepEqual(net.calls, []);
+  } finally { cleanup(); }
+  const local = boot(fakeWindow('', 'localhost'), stubNet());
+  try { assert.equal(local.canSignIn(), false); } finally { cleanup(); }
 });

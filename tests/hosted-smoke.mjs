@@ -23,7 +23,7 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === '/api/v1/time') return j(200, { serverTime: Date.now() });
     if (url.pathname === `/api/v1/games/rescue-pins/launch-token`) return j(200, { token: globalThis.TOKEN });
     if (url.pathname === `/api/v1/users/${USER}/profile`) return j(200, { id: USER, username: 'mira_x', nickname: 'Mira' });
-    if (url.pathname === '/api/v1/me/cloud-saves/rescue-pins') {
+    if (decodeURIComponent(url.pathname) === '/api/v1/me/cloud-saves/game:rescue-pins') {
       if (req.method === 'PUT') { let b = ''; for await (const c of req) b += c; globalThis.PUT_BODY = JSON.parse(b); return j(200, { ok: true }); }
       return j(404, { error: 'none' }); // no remote save yet
     }
@@ -49,7 +49,12 @@ const server = http.createServer(async (req, res) => {
 await new Promise(r => server.listen(0, '127.0.0.1', r));
 const base = `http://127.0.0.1:${server.address().port}`;
 
-import { zipStore } from '../js/platform.js';
+import { readFileSync } from 'node:fs';
+const SDK = (() => { // the shipped SDK's zip helpers verify the uploaded slot
+  const m = { exports: {} };
+  new Function('module', 'exports', readFileSync(new URL('../starhermit-sdk.js', import.meta.url), 'utf8'))(m, m.exports);
+  return m.exports;
+})();
 globalThis.TOKEN = Buffer.from(JSON.stringify({ alg: 'none' })).toString('base64url') + '.' +
   Buffer.from(JSON.stringify({ sub: USER, game_scope: 'rescue-pins' })).toString('base64url') + '.s';
 
@@ -79,14 +84,12 @@ checks.push(['sync badge visible on title', sync.length > 0]);
 checks.push(['fragment stripped', await page.evaluate(() => location.hash) === '']);
 const withAuth = received.filter(r => r.auth === 'Bearer ' + globalThis.TOKEN);
 checks.push(['time fetch authenticated', received.some(r => r.path === '/api/v1/time' && r.auth)]);
-checks.push(['refresh POST scoped route', received.some(r => r.path === '/api/v1/games/rescue-pins/launch-token' && r.auth)]);
 checks.push(['profile fetch by sub', received.some(r => r.path === `/api/v1/users/${USER}/profile` && r.auth)]);
-checks.push(['cloud PUT authenticated', received.some(r => r.path === '/api/v1/me/cloud-saves/rescue-pins' && r.method === 'PUT' && r.auth)]);
+checks.push(['cloud PUT authenticated', received.some(r => decodeURIComponent(r.path) === '/api/v1/me/cloud-saves/game:rescue-pins' && r.method === 'PUT' && r.auth)]);
 let putOk = false;
 if (globalThis.PUT_BODY && globalThis.PUT_BODY.dataBase64) {
   const bytes = new Uint8Array(Buffer.from(globalThis.PUT_BODY.dataBase64, 'base64'));
-  const { unzipFirstEntry } = await import('../js/platform.js');
-  const doc = JSON.parse(new TextDecoder().decode(unzipFirstEntry(bytes)));
+  const doc = JSON.parse(new TextDecoder().decode(await SDK._unzip(bytes)));
   putOk = doc.v === 1 && typeof doc.checksum === 'string';
 }
 checks.push(['cloud PUT body is valid zip save doc', putOk]);

@@ -6,3 +6,12 @@ server=server.js
 version=1.0.0
 contentVersion=1
 cover=cover.jpg
+
+# Keyboard actions (KeyboardEvent.code; remappable via the platform controls API).
+control.prev=ArrowLeft+ArrowUp+KeyA+KeyW | Previous pin
+control.next=ArrowRight+ArrowDown+KeyD+KeyS | Next pin
+control.pull=Enter+Space+NumpadEnter | Pull selected pin
+control.pause=Escape | Pause / resume
+control.undo=KeyU | Undo
+control.hint=KeyH | Hint
+control.camera=KeyC | Reset view

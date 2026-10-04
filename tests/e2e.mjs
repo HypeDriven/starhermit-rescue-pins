@@ -33,7 +33,13 @@ const step = async (name, fn) => {
   console.log(`ok - ${name}`);
 };
 
+// Standalone (no launch token) the client must never call its own server.
+const ownServerCalls = [];
 function wireErrorCollection(page, errors) {
+  page.on('request', (r) => {
+    const u = new URL(r.url());
+    if (u.origin + '/' === BASE && /^\/(api|ws)(\/|$)/.test(u.pathname)) ownServerCalls.push(u.pathname);
+  });
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
   page.on('console', (m) => {
     if ((m.type() === 'error' || m.type() === 'warning') && !browserNoise.test(m.text())) errors.push(`console ${m.type()}: ${m.text()}`);
@@ -296,6 +302,8 @@ async function mobilePass() {
 try {
   await desktopPass();
   await mobilePass();
+  if (ownServerCalls.length) throw new Error('standalone made own-server requests: ' + ownServerCalls.join(', '));
+  console.log('ok - standalone load made zero same-origin /api or /ws requests');
   console.log('\nE2E PASS — desktop + mobile playthroughs clean, no page errors');
 } finally {
   await browser.close();
