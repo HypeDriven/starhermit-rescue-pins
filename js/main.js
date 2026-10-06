@@ -72,6 +72,7 @@ function themeOf(level) { return THEMES.find(t => t.id === level.theme) || THEME
 function objectiveText() {
   const s = sess.session.state;
   const need = s.heroTotal - s.stats.savedCount;
+  if (need <= 0) return 'Every villager is safe.';
   return `Rescue ${need} villager${need === 1 ? '' : 's'} with water. Keep lava away.`;
 }
 

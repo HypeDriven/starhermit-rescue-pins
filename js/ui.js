@@ -217,10 +217,18 @@ export function createUI(root, actions, settings) {
     showOverlay(p);
   }
 
+  const REASON_TEXT = {
+    'all-rescued': 'Every villager reached safety.',
+    'hero-burned': 'Lava reached a villager.',
+    'move-limit-exceeded': 'Out of moves for this stage.',
+    'simulation-overflow': 'The flow could not settle.',
+  };
+
   function resultsScreen(result) {
     const p = el('section', 'rp-panel');
     p.appendChild(el('h2', result.won ? 'rp-win' : 'rp-lose', result.won ? 'Rescued!' : 'The castle claims another…'));
-    p.appendChild(el('p', '', result.reason || ''));
+    const why = REASON_TEXT[result.reason];
+    if (why) p.appendChild(el('p', '', why));
     const sb = result.score;
     const ul = el('ul', 'rp-score-list');
     const rows = [
@@ -251,7 +259,7 @@ export function createUI(root, actions, settings) {
       button('Menu', 'rp-btn-quiet', () => actions.showTitle()));
     p.appendChild(row);
     if (result.dailySubmit) p.appendChild(el('p', result.dailySubmit.ok ? 'rp-win' : 'rp-dim', result.dailySubmit.message));
-    announce(liveResults, result.won ? `Victory. Score ${sb.total}.` : `Defeat. ${result.reason || ''}`);
+    announce(liveResults, result.won ? `Victory. Score ${sb.total}.` : `Defeat. ${why || ''}`);
     showOverlay(p);
   }
 
