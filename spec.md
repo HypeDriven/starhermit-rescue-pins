@@ -74,8 +74,9 @@ The Three.js canvas fills the game region but is never the only UI. Menus, text,
 
 - **Wide desktop (≥1024 CSS px):** centered playfield, objective/progression rail on the left, contextual actions and social/status rail on the right. Maximum line length is 70 characters.
 - **Compact desktop/tablet:** playfield remains central; secondary rails collapse into drawers. Pointer hover may preview but never be required.
-- **Portrait mobile:** top safe-area status bar, square or perspective-fit playfield, bottom thumb-zone action tray, and sheet-based secondary panels. Never place critical controls under browser chrome or display cutouts.
+- **Portrait mobile:** top safe-area status bar, square or perspective-fit playfield, bottom thumb-zone action tray, and sheet-based secondary panels. Never place critical controls under browser chrome or display cutouts. On portrait phones the rails tighten (theme name hidden) and the lesson coach is compact — full-width text with **Got it** on its step line — so the board keeps ~310 px of height during Learn on a 390×844 phone.
 - **Landscape mobile:** reserve a narrow status rail; preserve at least 44×44 CSS-pixel targets and 8-pixel separation. Overlay panels are compacted so the results and mode-select buttons stay above the fold.
+- **Toast:** bottom centre in play; while an overlay (results, menus) is open it moves to the top edge and the overlay reserves its height (`--toast-h`), so it never covers a heading or button.
 - **Large screens (above 1600×1000):** `ui-scale.js` sets `--ui-scale` (2560×1440 → 1.44, 3840×2160 → 2.16); the rails (whose grid tracks widen to match), lesson coach, action tray, overlays, toasts and frame-rate readout are each zoomed by it, while the Three.js canvas stays unzoomed and fills the remaining stage. At 1600×1000 and below nothing changes.
 - React to resize, orientation, device-pixel-ratio, safe-area insets, virtual keyboard, and visibility changes without losing input or restarting the round.
 

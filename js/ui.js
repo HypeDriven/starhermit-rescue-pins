@@ -57,11 +57,17 @@ export function createUI(root, actions, settings) {
   toastBox.hidden = true;
   root.appendChild(toastBox);
   let toastTimer = null;
+  // While an overlay (results, menus) is open the toast sits at the top edge
+  // and the overlay reserves its height (--toast-h, layout px of the equally
+  // zoomed toast) so it never covers a heading or button.
+  const fitToast = () => document.documentElement.style.setProperty('--toast-h',
+    toastBox.hidden ? '0px' : `${toastBox.offsetHeight + 8}px`);
   function toast(msg, ms = 3200) {
     toastBox.textContent = msg;
     toastBox.hidden = false;
+    fitToast();
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => { toastBox.hidden = true; }, ms);
+    toastTimer = setTimeout(() => { toastBox.hidden = true; fitToast(); }, ms);
   }
 
   // persistent sync badge: lives in the right rail; hud()/pinSelector()
