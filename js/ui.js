@@ -109,7 +109,10 @@ export function createUI(root, actions, settings) {
     overlay.appendChild(panel);
     overlay.hidden = false;
     const first = panel.querySelector('button');
-    if (first) first.focus();
+    // preventScroll + reset: a low first button must not scroll the heading
+    // away; every panel opens at its top.
+    if (first) first.focus({ preventScroll: true });
+    for (const n of [overlay, ...overlay.querySelectorAll('*')]) if (n.scrollTop) n.scrollTop = 0;
   }
 
   function titleScreen(prog, opts) {

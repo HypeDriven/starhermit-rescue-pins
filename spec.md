@@ -166,7 +166,7 @@ Follow the skill pack's acceptance gate: deterministic seeds, debug views for co
 - `render` (`js/render.js`): Three.js scene graph, semantic entity views, camera, lighting, VFX, quality; `setGraphics()` applies settings live, `graphicsInfo()` feeds the panel, and the EffectComposer chain is RenderPass → GTAO → UnrealBloom → grade → OutputPass → SMAA/FXAA.
 - `gfx` (`js/gfx.js`): pure graphics quality model — presets, categories, `detectPreset()`, `resolve()`, `presetTier()`, `describe()`; `js/gfx-i18n.js` holds the localized Graphics strings.
 - Vendored three.js r185 (`js/three.min.js`, `js/three.core.min.js`) and same-revision addons under `js/vendor/three/addons/` (postprocessing passes, shaders, `RoomEnvironment`), mapped by the importmap in `index.html` (`three`, `three/addons/`).
-- `ui`: responsive DOM shell, focus, localization, settings, overlays, accessibility mirror.
+- `ui`: responsive DOM shell, focus, localization, settings, overlays, accessibility mirror. Overlays open at their top (heading visible): focus moves in with `preventScroll`.
 - `audio`: buses, event mapping, focus/background behavior, decode and memory policy.
 - `content`: versioned levels, themes, tutorials, validation metadata.
 - `platform`: token-aware REST adapter (fragment launch token, 45-min refresh, profile nickname, cloud-save mirror, read-only leaderboards); no telemetry or presence calls — the platform exposes none to launch tokens.
