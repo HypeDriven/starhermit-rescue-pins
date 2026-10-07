@@ -165,6 +165,22 @@ export function createPlatform(opts = {}) {
     return out.length ? out : null;
   }
 
+  // ---- leaderboard posting (score-script.js) ----
+  // A finished level's total goes through submitScores to the high-score board;
+  // resolves { posted, rank } (rank or null). Standalone: no request.
+  async function submitScore(total) {
+    const sh = SH();
+    if (!hosted()) return { posted: false, rank: null };
+    let keys = [];
+    try { keys = await sh.submitScores({ 'high-score': total }); } catch { keys = []; }
+    if (!keys || !keys.includes('high-score')) return { posted: false, rank: null };
+    try {
+      const r = await sh.leaderboard('high-score', { pageSize: 100 });
+      const me = ((r && r.items) || []).find((i) => i.userId === sh.userId);
+      return { posted: true, rank: me ? me.rank : null };
+    } catch { return { posted: true, rank: null }; }
+  }
+
   function start() {
     const sh = SH();
     if (!sh || typeof window === 'undefined') return;
@@ -180,7 +196,7 @@ export function createPlatform(opts = {}) {
 
   return {
     start, hosted, displayName, syncLabel,
-    loadCloudSave, queueCloudSave, flushCloudSave, fetchLeaderboardEntries,
+    loadCloudSave, queueCloudSave, flushCloudSave, fetchLeaderboardEntries, submitScore,
     loadSettings, mirrorSettings, loadBindings, actionFor,
     bindings: () => bindings,
     canSignIn: () => { const sh = SH(); return !!(sh && sh.canSignIn()); },

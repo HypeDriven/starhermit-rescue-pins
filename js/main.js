@@ -45,9 +45,9 @@ function soundCaption(ev) {
            win: 'victory chime', lose: 'low fail tone', invalid: 'error buzz', undo: 'rewind' }[ev] || ev;
 }
 
-// ---- daily: device clock, local score; hosted shows the read-only platform board ----
-// Clients never submit scores anywhere. Standalone the game makes no network
-// request: the daily seed derives from the device clock's UTC day.
+// ---- daily: device clock, local score; hosted shows the platform board ----
+// Standalone the game makes no network request: the daily seed derives from
+// the device clock's UTC day.
 function dailyResult() {
   return { ok: true, message: platform.hosted() ? 'Daily score kept on your profile.' : 'Daily score kept locally.' };
 }
@@ -214,8 +214,11 @@ async function finishRound(term) {
     newlyUnlocked = ev.newly.map(achievementByKey).filter(Boolean);
     persistProgress();
   }
+  // Signed in: every finished level except lessons posts its total (score-script.js).
+  const lbPost = platform.hosted() && sess.session.mode !== 'tutorial' ? platform.submitScore(score.total) : null;
   if (sess.session.mode === 'daily' && term.won) {
     dailySubmit = dailyResult();
+    if (lbPost) await lbPost; // the board below then includes this result
     dailyBoard = await fetchDailyBoard();
   }
   sess.transition('results', term.reason);
@@ -223,7 +226,7 @@ async function finishRound(term) {
   ui.resultsScreen({
     won: term.won, reason: term.reason, score,
     moves: sess.session.state.stats.moves, par: sess.session.state.par,
-    dailySubmit, achievements: newlyUnlocked, board: dailyBoard,
+    dailySubmit, achievements: newlyUnlocked, board: dailyBoard, lbPost,
   });
 }
 

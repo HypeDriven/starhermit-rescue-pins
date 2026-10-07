@@ -255,8 +255,16 @@ export function createUI(root, actions, settings) {
       for (const a of result.achievements) au.appendChild(el('li', 'rp-win', `✓ ${a.name} — ${a.description}`));
       p.appendChild(au);
     }
+    if (result.lbPost) {
+      const line = el('p', 'rp-dim rp-lb-line', shText('lbPosting'));
+      p.appendChild(line);
+      result.lbPost.then((r) => {
+        line.textContent = !r.posted ? shText('lbNotPosted')
+          : r.rank ? shText('lbRank', { rank: r.rank }) : shText('lbPosted');
+      });
+    }
     if (result.board && result.board.length) {
-      p.appendChild(el('h3', 'rp-rail-title', "Today's daily board"));
+      p.appendChild(el('h3', 'rp-rail-title', 'Leaderboard'));
       const ol = el('ol', 'rp-score-list');
       for (const e of result.board) ol.appendChild(el('li', '', `${e.name}: ${e.score}`));
       p.appendChild(ol);

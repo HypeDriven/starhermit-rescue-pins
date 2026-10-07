@@ -169,7 +169,7 @@ Follow the skill pack's acceptance gate: deterministic seeds, debug views for co
 - `ui`: responsive DOM shell, focus, localization, settings, overlays, accessibility mirror. Overlays open at their top (heading visible): focus moves in with `preventScroll`.
 - `audio`: buses, event mapping, focus/background behavior, decode and memory policy.
 - `content`: versioned levels, themes, tutorials, validation metadata.
-- `platform`: token-aware REST adapter (fragment launch token, 45-min refresh, profile nickname, cloud-save mirror, read-only leaderboards); no telemetry or presence calls — the platform exposes none to launch tokens.
+- `platform`: token-aware REST adapter (fragment launch token, 45-min refresh, profile nickname, cloud-save mirror, leaderboard reads and score posting via `submitScore`); no telemetry or presence calls — the platform exposes none to launch tokens.
 
 No module may mutate rules state except through a validated command. Rendering consumes immutable snapshots plus interpolation data. UI state and simulation state are separate so closing a drawer cannot affect a match.
 
@@ -209,9 +209,9 @@ No module may mutate rules state except through a validated command. Rendering c
 
 ### Achievements and leaderboards
 - Declare a small static achievement set: first completion, mechanic mastery, a sustained streak, a difficult content milestone, and an accessibility-neutral long-term goal. Keys are stable, lowercase identifiers; unlocks are idempotent.
-- Provide global and friends-filtered boards for the primary metric plus a fair daily/weekly board. Include ruleset, content version, seed, assists, and duration with every submission; reject impossible or stale-version scores. On the platform, leaderboard reads go through `StarHermit.getGame()`/`leaderboards()` → `leaderboardEntries()` (read-only; clients can never submit); the client never submits daily scores anywhere — they stay in the local (cloud-saved when hosted) progression, and standalone results show no board.
+- Provide global and friends-filtered boards for the primary metric plus a fair daily/weekly board. Include ruleset, content version, seed, assists, and duration with every submission; reject impossible or stale-version scores. On the platform, every finished level except tutorial lessons posts its total through `StarHermit.submitScores` (a practice session whose `score-script.js` range-checks it and posts it to the `high-score` board, integer, higher is better, 0–100,000); the results screen shows "Leaderboard rank: #N" (or posted / not posted; strings in `js/sh-i18n.js`, nine locales). Won dailies also list the top 5 of that board, read through `StarHermit.getGame()`/`leaderboards()` → `leaderboardEntries()`. Personal bests stay in the local (cloud-saved when hosted) progression; standalone posts nothing and shows no line or board.
 - For globally competitive boards, validate score claims through a lightweight authoritative script using replayable input logs and deterministic seeds. If validation is unavailable, label the board casual and apply plausibility/rate checks.
-- Achievements stay local (part of the cloud-saved progression doc); the platform has no entitlement for catalog client-claims and `server.js` is a node:http backend, not a Jint game script.
+- Achievements stay local (part of the cloud-saved progression doc); the platform has no entitlement for catalog client-claims and `score-script.js` reports only scores; `server.js` is the local node:http dev backend.
 
 ### Sessions and transport
 - The initial game is solo. Use an authoritative JavaScript Game Script only for seeded daily sessions, replay validation, and durable achievement delivery; ordinary practice can run locally and offline after initial load.
@@ -219,7 +219,7 @@ No module may mutate rules state except through a validated command. Rendering c
 - Realtime rooms, peer relay, matchmaking, backfill, and voice are intentionally not used because they add no value to this ruleset.
 
 ### Publishing and operations
-- Keep the authoritative script inside the distribution and declare it with `server=server.js`. Choose a digest-pinned container only if profiling proves the sandbox unsuitable; no initial design here requires one.
+- The platform script ships inside the distribution and is declared with `server=score-script.js` (canonical copy in the games repo's `tools/score-script.js`); it range-checks scores but does not replay-validate them. Choose a digest-pinned container only if profiling proves the sandbox unsuitable; no initial design here requires one.
 - Define control defaults, achievement metadata, and versioned settings before release. Publish immutable build assets, verify the launch path, maintain migration tests for saves, and expose no secret configuration to the client.
 - Capture anonymous funnel events only for start, tutorial step, round end, retry, settings change, and error category. Avoid raw text, precise personal data, and cross-title tracking.
 
