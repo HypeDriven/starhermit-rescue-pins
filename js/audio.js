@@ -42,9 +42,9 @@ export function createAudio(settings, captionHook) {
     for (const name of ['music', 'effects', 'ambience']) {
       const g = ctx.createGain();
       g.connect(master);
-      buses[name] = g;
+      buses[name] = (globalThis.GameOptions ? globalThis.GameOptions.tagBus(g, name) : g);
     }
-    buses.master = master;
+    buses.master = (globalThis.GameOptions ? globalThis.GameOptions.tagBus(master, "master") : master);
     applyVolumes();
     return true;
   }
@@ -62,7 +62,7 @@ export function createAudio(settings, captionHook) {
   // short synthesized transient on the effects bus
   function blip(spec, when = 0, freqMul = 1) {
     const t0 = ctx.currentTime + when;
-    const osc = ctx.createOscillator();
+    const osc = (globalThis.GameOptions ? globalThis.GameOptions.trackSource(ctx.createOscillator(), null) : ctx.createOscillator());
     const g = ctx.createGain();
     osc.type = spec.type;
     osc.frequency.setValueAtTime(spec.freq * freqMul, t0);
@@ -88,7 +88,7 @@ export function createAudio(settings, captionHook) {
   }
 
   function playSample(buffer) {
-    const src = ctx.createBufferSource();
+    const src = (globalThis.GameOptions ? globalThis.GameOptions.trackSource(ctx.createBufferSource(), null) : ctx.createBufferSource());
     src.buffer = buffer;
     src.connect(buses.effects);
     src.start();
@@ -115,8 +115,8 @@ export function createAudio(settings, captionHook) {
   // quiet deterministic ambience: slow filtered noise-free pad on the ambience bus
   function startAmbience() {
     if (!ensureCtx() || ambienceNodes) return;
-    const osc = ctx.createOscillator();
-    const osc2 = ctx.createOscillator();
+    const osc = (globalThis.GameOptions ? globalThis.GameOptions.trackSource(ctx.createOscillator(), null) : ctx.createOscillator());
+    const osc2 = (globalThis.GameOptions ? globalThis.GameOptions.trackSource(ctx.createOscillator(), null) : ctx.createOscillator());
     const g = ctx.createGain();
     osc.type = 'sine'; osc.frequency.value = 110;
     osc2.type = 'sine'; osc2.frequency.value = 165.2;

@@ -756,9 +756,9 @@ export function createRenderer(container, opts) {
       if (glassMat) glassMat.opacity = composer ? 0.018 : 0.12;
     }
     if (composer) {
-      try { composer.render(dt / 1000); }
-      catch { postFailed = true; postKey = null; composer = null; renderer.render(scene, camera); }
-    } else renderer.render(scene, camera);
+      try { (globalThis.GameOptions ? globalThis.GameOptions.draw(composer.renderer, () => composer.render(dt / 1000)) : composer.render(dt / 1000)); }
+      catch { postFailed = true; postKey = null; composer = null; (globalThis.GameOptions ? globalThis.GameOptions.draw(renderer, () => renderer.render(scene, camera)) : renderer.render(scene, camera)); }
+    } else (globalThis.GameOptions ? globalThis.GameOptions.draw(renderer, () => renderer.render(scene, camera)) : renderer.render(scene, camera));
   }
 
   function setPaused(p) { running = !p; if (!p) lastT = 0; }
