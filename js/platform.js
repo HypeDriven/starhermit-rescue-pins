@@ -7,6 +7,7 @@
 // API: versioned/checksummed progression doc, sync labels, keyboard bindings.
 
 import { hashString, stableStringify } from './rules.js';
+import { T } from './lang.js';
 
 const SH = () => globalThis.StarHermit || null;
 
@@ -47,24 +48,24 @@ export function createPlatform(opts = {}) {
   function syncLabel() {
     if (!hosted()) return null; // local play: no badge
     switch (sync) {
-      case 'synced': return 'Cloud save synced';
-      case 'saving': return 'Cloud saving…';
-      case 'connecting': return 'Cloud connecting…';
-      case 'error': return 'Cloud sync error — local copy safe';
+      case 'synced': return T('Cloud save synced');
+      case 'saving': return T('Cloud saving…');
+      case 'connecting': return T('Cloud connecting…');
+      case 'error': return T('Cloud sync error — local copy safe');
       default: return null;
     }
   }
   function displayName() {
     const sh = SH();
     if (!hosted() || !sh.userId) return null;
-    return nickname || ('Player ' + String(sh.userId).slice(0, 8));
+    return nickname || T('Player {id}', { id: String(sh.userId).slice(0, 8) });
   }
 
   // ---- profile nickname (SDK: nickname, "Player <id>" fallback) ----
   async function fetchProfileName(uid) {
     const sh = SH();
     const p = sh ? await sh.profile(uid).catch(() => null) : null;
-    return p ? p.displayName : 'Player ' + String(uid).slice(0, 8);
+    return p ? p.displayName : T('Player {id}', { id: String(uid).slice(0, 8) });
   }
   async function loadProfile() {
     const sh = SH();
@@ -101,6 +102,18 @@ export function createPlatform(opts = {}) {
   }
   function flushCloudSave() {
     if (hosted()) void SH().flushSave(true);
+  }
+  // Writes after a load are conditional (ETag). When another device saved
+  // first the SDK emits 'saveconflict': reload, merge (onConflict) and save.
+  let conflictMerge = null;
+  function onConflict(merge) { conflictMerge = merge; }
+  async function resolveConflict() {
+    const sh = SH();
+    if (!hosted()) return;
+    setSync('saving');
+    const doc = validateDoc(await sh.loadJSON());
+    const merged = conflictMerge ? conflictMerge(doc) : null;
+    if (merged && !sh.saveConflicted()) sh.saveJSON(docWithChecksum(merged), 0);
   }
 
   // ---- settings KV (platform value wins at start; changes patched) ----
@@ -160,7 +173,7 @@ export function createPlatform(opts = {}) {
     const out = [];
     for (const e of list.slice(0, pageSize)) {
       const uid = e.userId || e.user_id;
-      out.push({ name: uid ? await fetchProfileName(uid) : 'Player', score: e.score });
+      out.push({ name: uid ? await fetchProfileName(uid) : T('Player'), score: e.score });
     }
     return out.length ? out : null;
   }
@@ -186,6 +199,7 @@ export function createPlatform(opts = {}) {
     if (!sh || typeof window === 'undefined') return;
     sh.init(); // reads + strips the launch fragment; idempotent
     sh.on('saved', (ok) => setSync(ok ? 'synced' : 'error'));
+    sh.on('saveconflict', () => { void resolveConflict(); });
     sh.on('auth', (a) => { if (!a.signedIn) nickname = null; onSync(syncLabel()); if (opts.onAuth) opts.onAuth(a); });
     if (!hosted()) return;
     setSync('connecting');
@@ -196,7 +210,7 @@ export function createPlatform(opts = {}) {
 
   return {
     start, hosted, displayName, syncLabel,
-    loadCloudSave, queueCloudSave, flushCloudSave, fetchLeaderboardEntries, submitScore,
+    loadCloudSave, queueCloudSave, flushCloudSave, onConflict, resolveConflict, fetchLeaderboardEntries, submitScore,
     loadSettings, mirrorSettings, loadBindings, actionFor,
     bindings: () => bindings,
     canSignIn: () => { const sh = SH(); return !!(sh && sh.canSignIn()); },

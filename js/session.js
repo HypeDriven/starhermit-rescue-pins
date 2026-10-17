@@ -244,6 +244,32 @@ export function loadProgression(storage) {
   } catch { return { v: 1, completed: {}, bestScores: {}, tutorialDone: false, streakDays: [], achievements: [], rescuedTotal: 0 }; }
 }
 
+/**
+ * Merge two progression docs (this device and the cloud copy another device
+ * wrote) without losing either side: completed stages, finished tutorial and
+ * coach, streak days and achievements are unions; best scores keep the higher
+ * value per stage; the rescued total keeps the larger count.
+ */
+export function mergeProgression(local, remote) {
+  const base = { v: 1, completed: {}, bestScores: {}, tutorialDone: false, streakDays: [], achievements: [], rescuedTotal: 0 };
+  const a = { ...base, ...(local || {}) };
+  const b = { ...base, ...(remote || {}) };
+  const bestScores = { ...a.bestScores };
+  for (const [id, v] of Object.entries(b.bestScores || {})) if (!(bestScores[id] >= v)) bestScores[id] = v;
+  const out = {
+    ...b, ...a,
+    completed: { ...b.completed, ...a.completed },
+    bestScores,
+    tutorialDone: !!(a.tutorialDone || b.tutorialDone),
+    streakDays: [...new Set([...(a.streakDays || []), ...(b.streakDays || [])])].sort((x, y) => x - y),
+    achievements: [...new Set([...(a.achievements || []), ...(b.achievements || [])])],
+    rescuedTotal: Math.max(a.rescuedTotal | 0, b.rescuedTotal | 0),
+  };
+  if (a.coachDone || b.coachDone) out.coachDone = true;
+  delete out.checksum;
+  return out;
+}
+
 export function saveProgression(prog, storage) {
   const doc = { ...prog, v: 1 };
   doc.checksum = hashString(stableStringify({ ...doc, checksum: undefined }));

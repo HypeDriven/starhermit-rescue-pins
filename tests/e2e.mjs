@@ -16,6 +16,7 @@
  */
 import { chromium } from 'playwright-core';
 import { createServer } from '../server.js';
+import { stubStarHermit, launchToken } from './starhermit-e2e.mjs';
 
 const browserNoise = /GL Driver Message|GPU stall due to ReadPixels|Automatic fallback to software WebGL|EnableWebGLDeveloperExtensions/i;
 
@@ -299,9 +300,89 @@ async function mobilePass() {
   throwIfErrors(errors, 'mobile');
 }
 
+// Language (signed in via a stubbed StarHermit API): Automatic follows the
+// account's preferred language (fr-CA); choosing Italian in the pause sheet's
+// settings re-renders it in place, then the HUD, tray and pin list, without
+// ending the lesson; ui.language is saved and Report a problem posts a bug.
+async function languagePass(name, ctxOpts) {
+  const errors = [];
+  const context = await browser.newContext(ctxOpts);
+  const page = await context.newPage();
+  page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
+  page.on('console', (m) => {
+    if ((m.type() === 'error' || m.type() === 'warning') && !browserNoise.test(m.text())) errors.push(`console ${m.type()}: ${m.text()}`);
+  });
+  const shot = (n) => `${process.env.E2E_SHOT_DIR || '/tmp'}/rescue-pins-e2e-${n}-${name}.png`;
+  const panel = '.rp-overlay:not([hidden]) .rp-panel';
+  try {
+    const calls = await stubStarHermit(page, { preferredLanguage: 'fr-CA' });
+    await step(`[${name}] Automatic follows the account language (fr-CA)`, async () => {
+      await page.goto('about:blank');
+      await page.goto(BASE + 'index.html#game_token=' + launchToken(), { waitUntil: 'load' });
+      await page.waitForFunction(() => document.documentElement.lang === 'fr-CA');
+      await page.getByRole('button', { name: '▶ Jouer', exact: true }).waitFor({ timeout: 15000 });
+    });
+    await step(`[${name}] Italian chosen mid-lesson: pause sheet re-renders in place, ui.language saved, report sent`, async () => {
+      await page.getByRole('button', { name: '▶ Jouer', exact: true }).click();
+      await page.locator(`${panel} .rp-btn-mode`).first().click(); // Learn
+      await page.waitForSelector('.rp-pin-list button', { state: 'visible', timeout: 15000 });
+      await page.locator('.rp-tray').getByRole('button', { name: /Pause/ }).click();
+      await page.waitForSelector(`${panel} h2:text("En pause")`);
+      const choice = page.locator('[data-game-language="choice"]');
+      await choice.scrollIntoViewIfNeeded();
+      const auto = await choice.locator('option').first().textContent();
+      if (auto !== 'Automatique — Français (Canada)') throw new Error('Automatic label not resolved: ' + auto);
+      if (await choice.count() !== 1) throw new Error('expected exactly one language selector');
+      await choice.selectOption('it-IT');
+      await page.waitForFunction(() => document.documentElement.lang === 'it-IT');
+      await page.waitForFunction(() => /Salvato/.test(document.querySelector('[data-game-language="status"]').textContent));
+      if (calls.settings['ui.language']?.choice !== 'it-IT') throw new Error('ui.language not saved: ' + JSON.stringify(calls.settings));
+      if ((await page.locator(`${panel} h2`).first().innerText()).trim() !== 'In pausa') throw new Error('pause heading not re-rendered');
+      if ((await page.locator('#rp-gfx-section > legend').innerText()).trim() !== 'Grafica') throw new Error('graphics legend not re-rendered');
+      await page.locator(panel).getByLabel('Movimento ridotto', { exact: true }).waitFor({ state: 'attached' });
+      if (!(await choice.evaluate((el) => el.isConnected))) throw new Error('language selector was rebuilt');
+      await page.locator('[data-game-report="title"]').scrollIntoViewIfNeeded();
+      await page.fill('[data-game-report="title"]', 'Test report');
+      await page.click('[data-game-report="send"]');
+      await page.waitForFunction(() => /Grazie/.test(document.querySelector('[data-game-report="status"]').textContent));
+      if (!calls.reports?.[0] || calls.reports[0].kind !== 'bug') throw new Error('report not posted');
+      await choice.scrollIntoViewIfNeeded();
+      await page.screenshot({ path: shot('language') });
+      const vw = page.viewportSize().width;
+      for (const sel of ['[data-game-language="choice"]', '[data-game-report="send"]', '#gfx-preset']) {
+        const b = await page.locator(sel).boundingBox();
+        if (b && (b.x < 0 || b.x + b.width > vw + 1)) throw new Error(`${sel} cut off: ${JSON.stringify(b)}`);
+      }
+    });
+    await step(`[${name}] same lesson resumes in Italian (HUD, tray, pin list)`, async () => {
+      await page.getByRole('button', { name: 'Riprendi', exact: true }).click();
+      await page.waitForSelector('.rp-pin-list button', { state: 'visible' });
+      await page.locator('.rp-tray').getByRole('button', { name: '💡 Indizio (H)', exact: true }).waitFor();
+      if (!/^Perno /.test(await page.locator('.rp-pin-list button').first().innerText())) throw new Error('pin list not re-rendered');
+      if ((await page.locator('.rp-rail-right .rp-rail-title').first().textContent()).trim() !== 'Stato') throw new Error('status rail not re-rendered');
+      if (!/abitant/.test(await page.locator('.rp-rail-left .rp-objective').innerText())) throw new Error('objective not re-rendered');
+      await page.screenshot({ path: shot('language-hud') });
+    });
+    await step(`[${name}] back to Automatic (fr-CA)`, async () => {
+      await page.locator('.rp-tray').getByRole('button', { name: /Pausa/ }).click();
+      const choice = page.locator('[data-game-language="choice"]');
+      await choice.scrollIntoViewIfNeeded();
+      await choice.selectOption('auto');
+      await page.waitForFunction(() => document.documentElement.lang === 'fr-CA');
+      if (calls.settings['ui.language']?.choice !== 'auto') throw new Error('ui.language auto not saved');
+      if ((await page.locator(`${panel} h2`).first().innerText()).trim() !== 'En pause') throw new Error('pause heading not back in French');
+    });
+  } finally {
+    await context.close();
+  }
+  throwIfErrors(errors, `language ${name}`);
+}
+
 try {
   await desktopPass();
   await mobilePass();
+  await languagePass('desktop', { viewport: { width: 1280, height: 800 } });
+  await languagePass('mobile', { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 });
   if (ownServerCalls.length) throw new Error('standalone made own-server requests: ' + ownServerCalls.join(', '));
   console.log('ok - standalone load made zero same-origin /api or /ws requests');
   console.log('\nE2E PASS — desktop + mobile playthroughs clean, no page errors');

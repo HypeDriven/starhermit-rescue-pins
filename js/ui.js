@@ -4,36 +4,66 @@
 import { PRESETS, CATEGORIES, presetTier, resolve, describe, choosePreset, setOverride } from './gfx.js';
 import { gfxStrings } from './gfx-i18n.js';
 import { shText } from './sh-i18n.js';
+import { T, N } from './lang.js';
+
+// Lazy text: a function that renders `key` in the current language.
+const t = (key, vars) => () => T(key, typeof vars === 'function' ? vars() : vars);
+// Display names for generated level names ("Emerald Keep 3", "Daily 2026-10-17").
+export function levelLabel(level) {
+  if (!level) return '';
+  if (level.excluded) return T('Daily (excluded)');
+  if (level.daily != null) return T('Daily {date}', { date: new Date(level.daily * 86400000).toISOString().slice(0, 10) });
+  const m = /^(.*) (\d+)$/.exec(level.name || '');
+  return m ? `${T(m[1])} ${m[2]}` : (level.name || '');
+}
 
 export function createUI(root, actions, settings) {
+  // Every text set from a function is remembered so a language change can
+  // re-render it in place (relabel), without rebuilding screens or moving focus.
+  let bound = [];
+  function tx(node, fn, attr) {
+    const apply = () => { const v = fn(); if (attr) node.setAttribute(attr, v); else node.textContent = v; };
+    apply();
+    bound = bound.filter((b) => !(b.node === node && b.attr === attr)); // latest text wins
+    bound.push({ node, attr, apply });
+    if (bound.length > 4000) bound = bound.filter((b) => b.node.isConnected);
+    return node;
+  }
+  function relabel() {
+    bound = bound.filter((b) => b.node.isConnected);
+    for (const b of bound) b.apply();
+    if (gfxBox && gfxBox.isConnected) gfxBox.redraw();
+  }
+  let gfxBox = null;
+
   root.innerHTML = '';
   root.className = 'rp-root';
 
   // ---- persistent shell ----
   const shell = el('div', 'rp-shell');
   const railLeft = el('aside', 'rp-rail rp-rail-left');
-  railLeft.setAttribute('aria-label', 'Objective and progression');
+  tx(railLeft, t('Objective and progression'), 'aria-label');
   const stage = el('div', 'rp-stage');
   const canvasHost = el('div', 'rp-canvas-host');
   const railRight = el('aside', 'rp-rail rp-rail-right');
-  railRight.setAttribute('aria-label', 'Actions and status');
+  tx(railRight, t('Actions and status'), 'aria-label');
   const tray = el('nav', 'rp-tray');
-  tray.setAttribute('aria-label', 'Primary actions');
+  tx(tray, t('Primary actions'), 'aria-label');
   stage.appendChild(canvasHost);
   shell.append(railLeft, stage, railRight);
   root.append(shell, tray);
 
   // live regions
-  const liveObjective = liveRegion('Objective');
-  const liveScore = liveRegion('Score');
-  const liveError = liveRegion('Errors');
-  const liveResults = liveRegion('Results');
-  const liveCaption = liveRegion('Audio captions');
+  const liveObjective = liveRegion(t('Objective'));
+  const liveScore = liveRegion(t('Score'));
+  const liveError = liveRegion(t('Errors'));
+  const liveResults = liveRegion(t('Results'));
+  const liveCaption = liveRegion(t('Audio captions'));
   root.append(liveObjective, liveScore, liveError, liveResults, liveCaption);
 
   // accessibility mirror: concise navigable text of board state
   const mirror = el('section', 'rp-mirror sr-only');
-  mirror.setAttribute('aria-label', 'Board state in text');
+  tx(mirror, t('Board state in text'), 'aria-label');
   root.appendChild(mirror);
 
   const webglFallback = el('div', 'rp-webgl-fallback');
@@ -43,7 +73,7 @@ export function createUI(root, actions, settings) {
 
   // in-stage coach banner: visible first-play guidance and tutorial lesson text
   const coachBox = el('aside', 'rp-coach');
-  coachBox.setAttribute('aria-label', 'Guidance');
+  tx(coachBox, t('Guidance'), 'aria-label');
   coachBox.hidden = true;
   stage.appendChild(coachBox);
 
@@ -63,7 +93,8 @@ export function createUI(root, actions, settings) {
   const fitToast = () => document.documentElement.style.setProperty('--toast-h',
     toastBox.hidden ? '0px' : `${toastBox.offsetHeight + 8}px`);
   function toast(msg, ms = 3200) {
-    toastBox.textContent = msg;
+    if (typeof msg === 'function') tx(toastBox, msg);
+    else { bound = bound.filter((b) => b.node !== toastBox); toastBox.textContent = msg; }
     toastBox.hidden = false;
     fitToast();
     clearTimeout(toastTimer);
@@ -76,20 +107,25 @@ export function createUI(root, actions, settings) {
   syncBadge.hidden = true;
   railRight.appendChild(syncBadge);
   function setSync(text) {
-    if (text) { syncBadge.textContent = text; syncBadge.hidden = false; }
+    if (text) {
+      if (typeof text === 'function') tx(syncBadge, text);
+      else { bound = bound.filter((b) => b.node !== syncBadge); syncBadge.textContent = text; }
+      syncBadge.hidden = false;
+    }
     else syncBadge.hidden = true;
   }
 
   function el(tag, cls, text) {
     const e = document.createElement(tag);
     if (cls) e.className = cls;
-    if (text !== undefined) e.textContent = text;
+    if (typeof text === 'function') tx(e, text);
+    else if (text !== undefined) e.textContent = text;
     return e;
   }
   function liveRegion(label) {
     const r = el('div', 'sr-only');
     r.setAttribute('aria-live', 'polite');
-    r.setAttribute('aria-label', label);
+    tx(r, label, 'aria-label');
     r.setAttribute('role', 'status');
     return r;
   }
@@ -118,34 +154,34 @@ export function createUI(root, actions, settings) {
   function titleScreen(prog, opts) {
     const p = el('section', 'rp-panel rp-title');
     p.appendChild(el('h1', '', 'Rescue Pins'));
-    p.appendChild(el('p', 'rp-tag', 'Pull the pins. Spare the villagers.'));
-    const play = button('▶ Play', 'rp-btn-primary', () => actions.showModeSelect());
+    p.appendChild(el('p', 'rp-tag', t('Pull the pins. Spare the villagers.')));
+    const play = button(t('▶ Play'), 'rp-btn-primary', () => actions.showModeSelect());
     p.appendChild(play);
     if (opts && opts.hasSave) {
-      p.appendChild(button('Continue saved game', '', () => actions.continueSaved()));
+      p.appendChild(button(t('Continue saved game'), '', () => actions.continueSaved()));
     }
-    if (opts && opts.player) p.appendChild(el('p', 'rp-dim', `Signed in as ${opts.player}`));
+    if (opts && opts.player) p.appendChild(el('p', 'rp-dim', t('Signed in as {name}', { name: opts.player })));
     if (opts && opts.sync) p.appendChild(el('p', 'rp-dim', opts.sync));
     const row = el('div', 'rp-row');
     row.append(
-      button('Daily Challenge', '', () => actions.startDaily()),
-      button('Journey', '', () => actions.showJourney()),
-      button('Profile & Progress', '', () => actions.showProgression()));
+      button(t('Daily Challenge'), '', () => actions.startDaily()),
+      button(t('Journey'), '', () => actions.showJourney()),
+      button(t('Profile & Progress'), '', () => actions.showProgression()));
     p.appendChild(row);
     const done = Object.keys(prog.completed || {}).length;
-    p.appendChild(el('p', 'rp-dim', done ? `Journey progress: ${done}/40 stages cleared` : 'New here? Press Play, then pick Learn for five short lessons.'));
+    p.appendChild(el('p', 'rp-dim', done ? t('Journey progress: {n}/40 stages cleared', { n: done }) : t('New here? Press Play, then pick Learn for five short lessons.')));
     const row2 = el('div', 'rp-row');
-    const settingsBtn = button('⚙ ' + gfxStrings().settings, 'rp-btn-quiet', () => actions.showSettings());
+    const settingsBtn = button(() => '⚙ ' + gfxStrings().settings, 'rp-btn-quiet', () => actions.showSettings());
     settingsBtn.id = 'rp-settings-btn';
-    row2.append(button('How to play', 'rp-btn-quiet', () => actions.showHelp('title')), settingsBtn);
+    row2.append(button(t('How to play'), 'rp-btn-quiet', () => actions.showHelp('title')), settingsBtn);
     if (opts && opts.signedIn) {
-      const inv = button(shText('invite'), 'rp-btn-quiet', () => actions.invite());
+      const inv = button(() => shText('invite'), 'rp-btn-quiet', () => actions.invite());
       inv.id = 'rp-invite-btn';
       row2.append(inv);
     }
     p.appendChild(row2);
     if (opts && opts.canSignIn && !opts.signedIn) {
-      const si = button(shText('signIn'), '', () => actions.signIn());
+      const si = button(() => shText('signIn'), '', () => actions.signIn());
       si.id = 'rp-signin-btn';
       p.appendChild(si);
     }
@@ -155,196 +191,210 @@ export function createUI(root, actions, settings) {
   function modeSelectScreen(opts) {
     const newcomer = !(opts && opts.tutorialDone);
     const p = el('section', 'rp-panel');
-    p.appendChild(el('h2', '', 'Choose a mode'));
-    if (newcomer) p.appendChild(el('p', 'rp-dim', 'First time? Learn teaches the controls and rules one at a time.'));
+    p.appendChild(el('h2', '', t('Choose a mode')));
+    if (newcomer) p.appendChild(el('p', 'rp-dim', t('First time? Learn teaches the controls and rules one at a time.')));
     const modes = [
-      ['learn', 'Learn', 'Five short lessons. One rule at a time. Unranked.'],
-      ['journey', 'Journey', '40 authored castles across five themes.'],
-      ['daily', 'Daily Challenge', 'One shared castle per UTC day. Ranked.'],
-      ['practice', 'Practice', 'Pick a stage, undo allowed, unranked.'],
+      ['learn', N('Learn'), N('Five short lessons. One rule at a time. Unranked.')],
+      ['journey', N('Journey'), N('40 authored castles across five themes.')],
+      ['daily', N('Daily Challenge'), N('One shared castle per UTC day. Ranked.')],
+      ['practice', N('Practice'), N('Pick a stage, undo allowed, unranked.')],
     ];
     for (const [id, name, desc] of modes) {
-      const b = button(name, 'rp-btn-mode' + (newcomer && id === 'learn' ? ' rp-btn-primary' : ''), () => actions.startMode(id));
-      if (newcomer && id === 'learn') b.appendChild(el('span', 'rp-badge', 'Recommended'));
-      b.appendChild(el('small', 'rp-dim', desc));
+      const b = button('', 'rp-btn-mode' + (newcomer && id === 'learn' ? ' rp-btn-primary' : ''), () => actions.startMode(id));
+      b.appendChild(el('span', 'rp-mode-name', t(name)));
+      if (newcomer && id === 'learn') b.appendChild(el('span', 'rp-badge', t('Recommended')));
+      b.appendChild(el('small', 'rp-dim', t(desc)));
       p.appendChild(b);
     }
-    p.appendChild(button('Back', 'rp-btn-quiet', () => actions.showTitle()));
+    p.appendChild(button(t('Back'), 'rp-btn-quiet', () => actions.showTitle()));
     showOverlay(p);
   }
 
   function journeyScreen(prog, journey) {
     const p = el('section', 'rp-panel rp-journey');
-    p.appendChild(el('h2', '', 'Journey'));
+    p.appendChild(el('h2', '', t('Journey')));
     const grid = el('div', 'rp-stage-grid');
     journey.forEach((lv, i) => {
       const done = !!(prog.completed || {})[lv.id];
       const best = (prog.bestScores || {})[lv.id];
       const mastery = lv.difficulty && lv.difficulty.mastery;
       const b = button(`${done ? '★' : '☆'} ${i + 1}${mastery ? ' ♛' : ''}`, done ? 'rp-stage-done' : '', () => actions.startLevel(lv));
-      b.title = `${lv.name} — par ${lv.par}${lv.moveLimit ? ' — move limit ' + lv.moveLimit : ''}${mastery ? ' — mastery test' : ''}${best ? ' — best ' + best : ''}`;
-      b.setAttribute('aria-label', b.title);
+      const title = () => [levelLabel(lv), T('par {n}', { n: lv.par }), lv.moveLimit ? T('move limit {n}', { n: lv.moveLimit }) : null,
+        mastery ? T('mastery test') : null, best ? T('best {n}', { n: best }) : null].filter(Boolean).join(' — ');
+      tx(b, title, 'title');
+      tx(b, title, 'aria-label');
       grid.appendChild(b);
     });
     p.appendChild(grid);
-    p.appendChild(button('Back', 'rp-btn-quiet', () => actions.showTitle()));
+    p.appendChild(button(t('Back'), 'rp-btn-quiet', () => actions.showTitle()));
     showOverlay(p);
   }
 
   function progressionScreen(prog, extra) {
     const p = el('section', 'rp-panel');
-    p.appendChild(el('h2', '', 'Profile & Progress'));
+    p.appendChild(el('h2', '', t('Profile & Progress')));
     const done = Object.keys(prog.completed || {}).length;
-    p.appendChild(el('p', '', `Stages cleared: ${done}/40`));
-    p.appendChild(el('p', '', `Tutorial: ${prog.tutorialDone ? 'complete' : 'not finished'}`));
+    p.appendChild(el('p', '', t('Stages cleared: {n}/40', { n: done })));
+    p.appendChild(el('p', '', prog.tutorialDone ? t('Tutorial: complete') : t('Tutorial: not finished')));
     if (extra && extra.masteryTotal) {
-      p.appendChild(el('p', '', `Mastery track: ${extra.masteryDone}/${extra.masteryTotal} theme-final stages cleared`));
+      p.appendChild(el('p', '', t('Mastery track: {n}/{total} theme-final stages cleared', { n: extra.masteryDone, total: extra.masteryTotal })));
     }
     const best = Object.entries(prog.bestScores || {});
     if (best.length) {
       const ul = el('ul', 'rp-best-list');
-      for (const [id, s] of best.slice(-8)) ul.appendChild(el('li', '', `${id}: ${s}`));
+      for (const [id, s] of best.slice(-8)) ul.appendChild(el('li', '', () => `${actions.levelName ? actions.levelName(id) : id}: ${s}`));
       p.appendChild(ul);
     }
     if (extra && extra.achievements && extra.achievements.length) {
-      p.appendChild(el('h3', 'rp-rail-title', 'Achievements'));
+      p.appendChild(el('h3', 'rp-rail-title', t('Achievements')));
       const ul = el('ul', 'rp-score-list');
       for (const a of extra.achievements) {
         ul.appendChild(el('li', a.unlocked ? 'rp-win' : 'rp-dim',
-          `${a.unlocked ? '✓' : '○'} ${a.name} — ${a.description}`));
+          () => `${a.unlocked ? '✓' : '○'} ${T(a.name)} — ${T(a.description)}`));
       }
       p.appendChild(ul);
     }
     if (extra && extra.account) p.appendChild(el('p', 'rp-dim', extra.account));
-    p.appendChild(button('Back', 'rp-btn-quiet', () => actions.showTitle()));
+    p.appendChild(button(t('Back'), 'rp-btn-quiet', () => actions.showTitle()));
     showOverlay(p);
   }
 
   function countdownScreen(n) {
     const p = el('section', 'rp-panel rp-countdown');
-    p.appendChild(el('h2', '', String(n)));
+    p.appendChild(el('h2', '', typeof n === 'function' ? n : String(n)));
     showOverlay(p);
   }
 
   const REASON_TEXT = {
-    'all-rescued': 'Every villager reached safety.',
-    'hero-burned': 'Lava reached a villager.',
-    'move-limit-exceeded': 'Out of moves for this stage.',
-    'simulation-overflow': 'The flow could not settle.',
+    'all-rescued': N('Every villager reached safety.'),
+    'hero-burned': N('Lava reached a villager.'),
+    'move-limit-exceeded': N('Out of moves for this stage.'),
+    'simulation-overflow': N('The flow could not settle.'),
   };
 
   function resultsScreen(result) {
     const p = el('section', 'rp-panel');
-    p.appendChild(el('h2', result.won ? 'rp-win' : 'rp-lose', result.won ? 'Rescued!' : 'The castle claims another…'));
+    p.appendChild(el('h2', result.won ? 'rp-win' : 'rp-lose', result.won ? t('Rescued!') : t('The castle claims another…')));
     const why = REASON_TEXT[result.reason];
-    if (why) p.appendChild(el('p', '', why));
+    if (why) p.appendChild(el('p', '', t(why)));
     const sb = result.score;
     const ul = el('ul', 'rp-score-list');
     const rows = [
-      ['Villagers saved', sb.saved], ['Hazards neutralized', sb.neutralized],
-      ['Under-par bonus', sb.parBonus], ['Efficiency', sb.efficiency],
-      ['Invalid-action penalty', -sb.invalidPenalty],
+      [N('Villagers saved: {n}'), sb.saved], [N('Hazards neutralized: {n}'), sb.neutralized],
+      [N('Under-par bonus: {n}'), sb.parBonus], [N('Efficiency: {n}'), sb.efficiency],
+      [N('Invalid-action penalty: {n}'), -sb.invalidPenalty],
     ];
-    for (const [k, v] of rows) if (v) ul.appendChild(el('li', '', `${k}: ${v}`));
-    ul.appendChild(el('li', 'rp-total', `Total: ${sb.total}`));
+    for (const [k, v] of rows) if (v) ul.appendChild(el('li', '', t(k, { n: v })));
+    ul.appendChild(el('li', 'rp-total', t('Total: {n}', { n: sb.total })));
     p.appendChild(ul);
-    p.appendChild(el('p', 'rp-dim', `Pins pulled: ${result.moves} (par ${result.par})`));
+    p.appendChild(el('p', 'rp-dim', t('Pins pulled: {n} (par {par})', { n: result.moves, par: result.par })));
     if (result.achievements && result.achievements.length) {
-      p.appendChild(el('h3', 'rp-rail-title', 'Achievements unlocked'));
+      p.appendChild(el('h3', 'rp-rail-title', t('Achievements unlocked')));
       const au = el('ul', 'rp-score-list');
-      for (const a of result.achievements) au.appendChild(el('li', 'rp-win', `✓ ${a.name} — ${a.description}`));
+      for (const a of result.achievements) au.appendChild(el('li', 'rp-win', () => `✓ ${T(a.name)} — ${T(a.description)}`));
       p.appendChild(au);
     }
     if (result.lbPost) {
-      const line = el('p', 'rp-dim rp-lb-line', shText('lbPosting'));
+      let lb = null;
+      const line = el('p', 'rp-dim rp-lb-line', () => (!lb ? shText('lbPosting') : !lb.posted ? shText('lbNotPosted')
+        : lb.rank ? shText('lbRank', { rank: lb.rank }) : shText('lbPosted')));
       p.appendChild(line);
-      result.lbPost.then((r) => {
-        line.textContent = !r.posted ? shText('lbNotPosted')
-          : r.rank ? shText('lbRank', { rank: r.rank }) : shText('lbPosted');
-      });
+      result.lbPost.then((r) => { lb = r; relabel(); });
     }
     if (result.board && result.board.length) {
-      p.appendChild(el('h3', 'rp-rail-title', 'Leaderboard'));
+      p.appendChild(el('h3', 'rp-rail-title', t('Leaderboard')));
       const ol = el('ol', 'rp-score-list');
       for (const e of result.board) ol.appendChild(el('li', '', `${e.name}: ${e.score}`));
       p.appendChild(ol);
     }
     const row = el('div', 'rp-row');
     row.append(
-      button('Retry', '', () => actions.retry()),
-      button(result.won ? 'Next stage' : 'Change stage', 'rp-btn-primary', () => actions.next()),
-      button('Menu', 'rp-btn-quiet', () => actions.showTitle()));
+      button(t('Retry'), '', () => actions.retry()),
+      button(result.won ? t('Next stage') : t('Change stage'), 'rp-btn-primary', () => actions.next()),
+      button(t('Menu'), 'rp-btn-quiet', () => actions.showTitle()));
     p.appendChild(row);
     if (result.dailySubmit) p.appendChild(el('p', result.dailySubmit.ok ? 'rp-win' : 'rp-dim', result.dailySubmit.message));
-    announce(liveResults, result.won ? `Victory. Score ${sb.total}.` : `Defeat. ${why || ''}`);
+    announce(liveResults, result.won ? T('Victory. Score {n}.', { n: sb.total }) : T('Defeat. {why}', { why: why ? T(why) : '' }));
     showOverlay(p);
   }
 
   function pauseScreen() {
     const p = el('section', 'rp-panel');
-    p.appendChild(el('h2', '', 'Paused'));
-    p.appendChild(button('Resume', 'rp-btn-primary', () => actions.resume()));
+    p.appendChild(el('h2', '', t('Paused')));
+    p.appendChild(button(t('Resume'), 'rp-btn-primary', () => actions.resume()));
     p.appendChild(settingsSections(true));
     showOverlay(p);
   }
 
   // Settings reachable from the title screen (the pause screen embeds the same sections)
   function settingsScreen() {
-    const T = gfxStrings();
     const p = el('section', 'rp-panel');
-    p.appendChild(el('h2', '', T.settings));
+    p.appendChild(el('h2', '', () => gfxStrings().settings));
     p.appendChild(settingsSections(false));
-    p.appendChild(button(T.back, 'rp-btn-quiet', () => actions.showTitle()));
+    p.appendChild(button(() => gfxStrings().back, 'rp-btn-quiet', () => actions.showTitle()));
     showOverlay(p);
   }
 
   function settingsSections(inGame) {
-    const T = gfxStrings();
     const secs = el('div', 'rp-settings-sections');
     // audio
-    secs.appendChild(settingsSection('Audio', (sec) => {
-      for (const bus of ['music', 'effects', 'ambience']) {
-        sec.appendChild(slider(bus[0].toUpperCase() + bus.slice(1), settings.audio[bus], v => actions.setVolume(bus, v)));
+    secs.appendChild(settingsSection(t('Audio'), (sec) => {
+      for (const [bus, name] of [['music', N('Music')], ['effects', N('Effects')], ['ambience', N('Ambience')]]) {
+        sec.appendChild(slider(t(name), settings.audio[bus], v => actions.setVolume(bus, v)));
       }
-      sec.appendChild(toggle('Mute all', settings.audio.muted, v => actions.setMuted(v)));
-      sec.appendChild(toggle('Captions', settings.captions !== false, v => actions.setCaptions(v)));
+      sec.appendChild(toggle(t('Mute all'), settings.audio.muted, v => actions.setMuted(v)));
+      sec.appendChild(toggle(t('Captions'), settings.captions !== false, v => actions.setCaptions(v)));
     }));
-    // graphics quality (presets, per-effect overrides, render scale)
-    const gfxSec = settingsSection(T.graphics, (sec) => graphicsControls(sec));
+    // graphics quality (presets, per-effect overrides, render scale); the
+    // shared Sound / Language / Report sections (game-options.js) mount at the
+    // end of this fieldset, after the controls box that redraws itself.
+    const gfxSec = settingsSection(() => gfxStrings().graphics, (sec) => {
+      const box = el('div', 'rp-gfx-controls');
+      box.redraw = (focusId) => {
+        box.innerHTML = '';
+        graphicsControls(box);
+        const f = focusId && box.querySelector('#' + focusId);
+        if (f) f.focus();
+      };
+      gfxBox = box;
+      sec.appendChild(box);
+      graphicsControls(box);
+    });
     gfxSec.classList.add('rp-gfx');
     gfxSec.id = 'rp-gfx-section';
+    gfxSec.dataset.optionsGraphics = '';
     secs.appendChild(gfxSec);
     // display / readability
-    secs.appendChild(settingsSection(T.display, (sec) => {
-      sec.appendChild(select('Palette', ['default', 'colorblind', 'highcontrast'], settings.graphics.palette, v => actions.setPalette(v)));
-      sec.appendChild(toggle('Reduced motion', settings.graphics.reducedMotion, v => actions.setReducedMotion(v)));
-      sec.appendChild(toggle('High contrast', settings.graphics.highContrast, v => actions.setHighContrast(v)));
-      sec.appendChild(toggle('Larger text', settings.graphics.textSize === 'large', v => actions.setTextSize(v ? 'large' : 'normal')));
+    secs.appendChild(settingsSection(() => gfxStrings().display, (sec) => {
+      sec.appendChild(select(t('Palette'), [['default', N('Default')], ['colorblind', N('Colorblind')], ['highcontrast', N('High contrast')]], settings.graphics.palette, v => actions.setPalette(v)));
+      sec.appendChild(toggle(t('Reduced motion'), settings.graphics.reducedMotion, v => actions.setReducedMotion(v)));
+      sec.appendChild(toggle(t('High contrast'), settings.graphics.highContrast, v => actions.setHighContrast(v)));
+      sec.appendChild(toggle(t('Larger text'), settings.graphics.textSize === 'large', v => actions.setTextSize(v ? 'large' : 'normal')));
     }));
     // controls
-    secs.appendChild(settingsSection('Controls', (sec) => {
-      sec.appendChild(el('p', 'rp-dim', 'Arrows/WASD: choose pin · Enter/Space: pull · Esc: pause/cancel · U: undo (practice) · H: hint · C: reset camera'));
-      sec.appendChild(toggle('Left-handed tray', settings.controls.leftHanded, v => actions.setLeftHanded(v)));
+    secs.appendChild(settingsSection(t('Controls'), (sec) => {
+      sec.appendChild(el('p', 'rp-dim', t('Arrows/WASD: choose pin · Enter/Space: pull · Esc: pause/cancel · U: undo (practice) · H: hint · C: reset camera')));
+      sec.appendChild(toggle(t('Left-handed tray'), settings.controls.leftHanded, v => actions.setLeftHanded(v)));
     }));
     // accessibility
-    secs.appendChild(settingsSection('Accessibility', (sec) => {
-      sec.appendChild(el('p', 'rp-dim', 'Every board state is mirrored as text for screen readers. No gameplay information is audio-only or color-only.'));
-      sec.appendChild(button('Replay tutorial', '', () => actions.startMode('learn')));
+    secs.appendChild(settingsSection(t('Accessibility'), (sec) => {
+      sec.appendChild(el('p', 'rp-dim', t('Every board state is mirrored as text for screen readers. No gameplay information is audio-only or color-only.')));
+      sec.appendChild(button(t('Replay tutorial'), '', () => actions.startMode('learn')));
     }));
     if (inGame) {
       // help + leave
-      secs.appendChild(settingsSection('Help', (sec) => {
-        sec.appendChild(button('Rule cards', '', () => actions.showHelp()));
+      secs.appendChild(settingsSection(t('Help'), (sec) => {
+        sec.appendChild(button(t('Rule cards'), '', () => actions.showHelp()));
       }));
-      secs.appendChild(settingsSection('Leave', (sec) => {
-        sec.appendChild(button('Save & quit to title', 'rp-btn-danger', () => actions.quitToTitle()));
+      secs.appendChild(settingsSection(t('Leave'), (sec) => {
+        sec.appendChild(button(t('Save & quit to title'), 'rp-btn-danger', () => actions.quitToTitle()));
       }));
     }
     return secs;
   }
 
   // Graphics controls: every change applies immediately, persists, and the
-  // section re-renders so "From preset (…)" labels and the summary stay true.
+  // controls box re-renders so "From preset (…)" labels and the summary stay true.
   function graphicsControls(sec) {
     const T = gfxStrings();
     const saved = actions.gfxSaved();
@@ -353,12 +403,7 @@ export function createUI(root, actions, settings) {
     const r = info ? info.resolved : resolve(saved, detected);
     const apply = (next, focusId) => {
       actions.setGfx(next);
-      const legend = sec.querySelector('legend');
-      sec.innerHTML = '';
-      if (legend) sec.appendChild(legend);
-      graphicsControls(sec);
-      const f = focusId && sec.querySelector('#' + focusId);
-      if (f) f.focus();
+      sec.redraw(focusId);
     };
     const tierName = (t) => T.tier[t] || t;
 
@@ -368,7 +413,8 @@ export function createUI(root, actions, settings) {
 
     // render scale 50–200 %
     const pct = Math.round((Number(saved.render_scale) || 1) * 100);
-    const w = el('label', 'rp-field rp-scale', T.renderScale + ' ');
+    const w = field(T.renderScale);
+    w.classList.add('rp-scale');
     const box = el('span', 'rp-scale-box');
     const range = el('input');
     range.type = 'range'; range.min = '50'; range.max = '200'; range.step = '10'; range.value = String(pct);
@@ -408,7 +454,7 @@ export function createUI(root, actions, settings) {
   }
 
   function selectKV(id, label, options, value, onChange) {
-    const w = el('label', 'rp-field', label + ' ');
+    const w = field(label);
     const s = el('select');
     s.id = id; s.dataset.gfx = id.replace(/^gfx-/, '');
     s.setAttribute('aria-label', label);
@@ -435,17 +481,23 @@ export function createUI(root, actions, settings) {
     fill(sec);
     return sec;
   }
+  // Field label text lives in its own span so a relabel never removes the control.
+  function field(label) {
+    const w = el('label', 'rp-field');
+    w.append(el('span', 'rp-field-label', label), ' ');
+    return w;
+  }
   function slider(label, value, onChange) {
-    const w = el('label', 'rp-field', label + ' ');
+    const w = field(label);
     const i = el('input');
     i.type = 'range'; i.min = '0'; i.max = '1'; i.step = '0.05'; i.value = String(value);
-    i.setAttribute('aria-label', label);
+    tx(i, label, 'aria-label');
     i.addEventListener('input', () => onChange(parseFloat(i.value)));
     w.appendChild(i);
     return w;
   }
   function toggle(label, value, onChange) {
-    const w = el('label', 'rp-field', label + ' ');
+    const w = field(label);
     const i = el('input');
     i.type = 'checkbox'; i.checked = !!value;
     i.addEventListener('change', () => onChange(i.checked));
@@ -453,11 +505,11 @@ export function createUI(root, actions, settings) {
     return w;
   }
   function select(label, options, value, onChange) {
-    const w = el('label', 'rp-field', label + ' ');
+    const w = field(label);
     const s = el('select');
-    s.setAttribute('aria-label', label);
-    for (const o of options) {
-      const opt = el('option', '', o);
+    tx(s, label, 'aria-label');
+    for (const [o, name] of options) {
+      const opt = el('option', '', t(name));
       opt.value = o;
       if (o === value) opt.selected = true;
       s.appendChild(opt);
@@ -469,24 +521,24 @@ export function createUI(root, actions, settings) {
 
   function helpScreen(bindings) {
     const p = el('section', 'rp-panel');
-    p.appendChild(el('h2', '', 'How to play'));
+    p.appendChild(el('h2', '', t('How to play')));
     const cards = el('div', 'rp-rule-cards');
     const rules = [
-      ['Pull pins', 'Tap or click a brass pin to select it, then tap it again to pull it. On a keyboard, choose a pin with ' + bindings.select + ' and press ' + bindings.confirm + '. The pin list in the Status rail works too: one press pulls that pin.'],
-      ['Water rescues', 'Water falls and flows sideways. A villager touched by water is rescued.'],
-      ['Lava kills', 'A villager touched by lava is lost. The stage ends.'],
-      ['Steam', 'Water and lava in the same chamber neutralize into inert steam.'],
-      ['Score', 'Save villagers, waste no pins: beating par and avoiding mistakes raises your score.'],
-      ['Stuck?', `Press ${bindings.hint} (or the Hint button) for a pin on a winning line. ${bindings.pause} pauses and opens settings. ${bindings.undo} undoes in Learn and Practice.`],
+      [t('Pull pins'), t('Tap or click a brass pin to select it, then tap it again to pull it. On a keyboard, choose a pin with {select} and press {confirm}. The pin list in the Status rail works too: one press pulls that pin.', bindings)],
+      [t('Water rescues'), t('Water falls and flows sideways. A villager touched by water is rescued.')],
+      [t('Lava kills'), t('A villager touched by lava is lost. The stage ends.')],
+      [t('Steam'), t('Water and lava in the same chamber neutralize into inert steam.')],
+      [t('Score'), t('Save villagers, waste no pins: beating par and avoiding mistakes raises your score.')],
+      [t('Stuck?'), t('Press {hint} (or the Hint button) for a pin on a winning line. {pause} pauses and opens settings. {undo} undoes in Learn and Practice.', bindings)],
     ];
-    for (const [t, d] of rules) {
+    for (const [title, d] of rules) {
       const c = el('article', 'rp-rule-card');
-      c.appendChild(el('h3', '', t));
+      c.appendChild(el('h3', '', title));
       c.appendChild(el('p', '', d));
       cards.appendChild(c);
     }
     p.appendChild(cards);
-    p.appendChild(button('Back', 'rp-btn-quiet', () => actions.backFromHelp()));
+    p.appendChild(button(t('Back'), 'rp-btn-quiet', () => actions.backFromHelp()));
     showOverlay(p);
   }
 
@@ -495,24 +547,25 @@ export function createUI(root, actions, settings) {
     railLeft.innerHTML = '';
     railLeft.appendChild(el('h2', 'rp-rail-title', data.title || ''));
     railLeft.appendChild(el('p', 'rp-objective', data.objective));
-    railLeft.appendChild(stat('Moves', `${data.moves} / par ${data.par}${data.moveLimit ? ' · limit ' + data.moveLimit : ''}`, 'rp-moves'));
+    railLeft.appendChild(stat(t('Moves'), data.moveLimit ? t('{n} / par {par} · limit {limit}', { n: data.moves, par: data.par, limit: data.moveLimit })
+      : t('{n} / par {par}', { n: data.moves, par: data.par }), 'rp-moves'));
     if (data.themeName) railLeft.appendChild(el('p', 'rp-dim', data.themeName));
     railRight.innerHTML = '';
-    railRight.appendChild(el('h2', 'rp-rail-title', 'Status'));
-    if (data.player) railRight.appendChild(stat('Player', data.player));
-    railRight.appendChild(stat('Saved', `${data.saved} / ${data.heroTotal}`));
-    railRight.appendChild(stat('Score', String(data.score)));
+    railRight.appendChild(el('h2', 'rp-rail-title', t('Status')));
+    if (data.player) railRight.appendChild(stat(t('Player'), data.player));
+    railRight.appendChild(stat(t('Saved'), `${data.saved} / ${data.heroTotal}`));
+    railRight.appendChild(stat(t('Score'), String(data.score)));
     if (data.hint) railRight.appendChild(el('p', 'rp-hint', data.hint));
-    railRight.appendChild(el('h3', 'rp-rail-title rp-pin-heading', 'Pins you can pull'));
+    railRight.appendChild(el('h3', 'rp-rail-title rp-pin-heading', t('Pins you can pull')));
     if (data.sync) setSync(data.sync);
     railRight.appendChild(syncBadge);
     tray.innerHTML = '';
     const mk = (label, fn, cls) => { const b = button(label, cls || '', fn); tray.appendChild(b); };
-    if (data.canUndo) mk('↩ Undo (U)', () => actions.undo());
-    mk('💡 Hint (H)', () => actions.hint());
-    mk('⏸ Pause (Esc)', () => actions.pause(), 'rp-btn-quiet');
-    announce(liveObjective, data.objective);
-    announce(liveScore, `Score ${data.score}. Moves ${data.moves} of par ${data.par}.`);
+    if (data.canUndo) mk(t('↩ Undo (U)'), () => actions.undo());
+    mk(t('💡 Hint (H)'), () => actions.hint());
+    mk(t('⏸ Pause (Esc)'), () => actions.pause(), 'rp-btn-quiet');
+    announce(liveObjective, typeof data.objective === 'function' ? data.objective() : data.objective);
+    announce(liveScore, T('Score {score}. Moves {n} of par {par}.', { score: data.score, n: data.moves, par: data.par }));
   }
 
   function stat(label, value, cls) {
@@ -540,55 +593,55 @@ export function createUI(root, actions, settings) {
     let list = railRight.querySelector('.rp-pin-list');
     if (!list) {
       list = el('div', 'rp-pin-list');
-      list.setAttribute('aria-label', 'Pins you can pull');
+      tx(list, t('Pins you can pull'), 'aria-label');
       railRight.appendChild(list);
     }
     railRight.appendChild(syncBadge); // keep the badge after the pin list
     list.innerHTML = '';
-    if (!legalPinIds.length) list.appendChild(el('p', 'rp-dim', 'No pins left to pull.'));
+    if (!legalPinIds.length) list.appendChild(el('p', 'rp-dim', t('No pins left to pull.')));
     for (const id of legalPinIds) {
       // Real action buttons (clicking pulls the pin). Do NOT override their
       // native `button` role — role="option" unmasked the button semantics and
       // made "Pin N" unreachable for assistive tech and role-based selectors
       // (e.g. getByRole('button')). Selection is conveyed by the .rp-selected
       // class; the buttons themselves are the actionable controls.
-      const b = button('Pin ' + id, 'rp-pin-opt' + (id === selectedId ? ' rp-selected' : ''), () => actions.pullPin(id));
+      const b = button(t('Pin {id}', { id }), 'rp-pin-opt' + (id === selectedId ? ' rp-selected' : ''), () => actions.pullPin(id));
       b.setAttribute('aria-pressed', id === selectedId ? 'true' : 'false');
       list.appendChild(b);
     }
   }
 
   function updateMirror(state, levelName) {
-    const lines = [`Castle: ${levelName}. ${state.cols} columns, ${state.rows} rows.`];
+    const lines = [T('Castle: {name}. {cols} columns, {rows} rows.', { name: typeof levelName === 'function' ? levelName() : levelName, cols: state.cols, rows: state.rows })];
     for (let r = 0; r < state.rows; r++) {
       for (let c = 0; c < state.cols; c++) {
         const cell = state.chambers[c + ',' + r];
         const bits = [];
-        if (cell.water) bits.push(cell.water + ' water');
-        if (cell.lava) bits.push(cell.lava + ' lava');
-        if (cell.hero) bits.push('villager');
-        if (cell.saved) bits.push('rescued villager');
-        if (bits.length) lines.push(`Row ${r + 1} column ${c + 1}: ${bits.join(', ')}.`);
+        if (cell.water) bits.push(T('{n} water', { n: cell.water }));
+        if (cell.lava) bits.push(T('{n} lava', { n: cell.lava }));
+        if (cell.hero) bits.push(T('villager'));
+        if (cell.saved) bits.push(T('rescued villager'));
+        if (bits.length) lines.push(T('Row {r} column {c}: {list}.', { r: r + 1, c: c + 1, list: bits.join(', ') }));
       }
     }
-    lines.push(`${state.pins.length} pins remain.`);
+    lines.push(T('{n} pins remain.', { n: state.pins.length }));
     mirror.innerHTML = '';
-    const h = el('h3', '', 'Board state');
+    const h = el('h3', '', t('Board state'));
     const ul = el('ul');
     for (const l of lines) ul.appendChild(el('li', '', l));
     mirror.append(h, ul);
   }
 
   function showWebglFallback(msg) {
-    webglFallback.textContent = msg;
+    if (typeof msg === 'function') tx(webglFallback, msg); else webglFallback.textContent = msg;
     webglFallback.hidden = false;
   }
 
-  function error(msg) { announce(liveError, msg); }
+  function error(msg) { announce(liveError, typeof msg === 'function' ? msg() : msg); }
   function caption(text) { if (settings.captions !== false) announce(liveCaption, text); }
 
   return { titleScreen, modeSelectScreen, journeyScreen, progressionScreen, countdownScreen,
            resultsScreen, pauseScreen, settingsScreen, helpScreen, hud, pinSelector, updateMirror, coach,
-           clearOverlay, showWebglFallback, error, caption, setSync, toast,
+           clearOverlay, showWebglFallback, error, caption, setSync, toast, relabel,
            canvasHost, el };
 }

@@ -3,11 +3,12 @@
 
 import { solveState } from './rules.js';
 import { getTutorial, getJourney, getDailyLevel, dailySeedForDate, THEMES, findLevel } from './content.js';
-import { createSession, loadSettings, saveSettings, loadProgression, saveProgression, defaultStorage } from './session.js';
+import { createSession, loadSettings, saveSettings, loadProgression, saveProgression, mergeProgression, defaultStorage } from './session.js';
 import { createPlatform, keyLabel } from './platform.js';
 import { shText } from './sh-i18n.js';
 import { createRenderer } from './render.js';
-import { createUI } from './ui.js';
+import { createUI, levelLabel } from './ui.js';
+import { T, N, onLanguage } from './lang.js';
 import { createAudio } from './audio.js';
 import { ACHIEVEMENTS, achievementByKey, evaluateAchievements } from './achievements.js';
 
@@ -41,15 +42,17 @@ function persistProgress() {
 const audio = createAudio(settings, (ev) => ui && ui.caption(soundCaption(ev)));
 
 function soundCaption(ev) {
-  return { ack: 'click', pull: 'pin pulled', flow: 'liquid flowing', neutralize: 'steam hiss',
-           win: 'victory chime', lose: 'low fail tone', invalid: 'error buzz', undo: 'rewind' }[ev] || ev;
+  const key = { ack: N('click'), pull: N('pin pulled'), flow: N('liquid flowing'), neutralize: N('steam hiss'),
+           win: N('victory chime'), lose: N('low fail tone'), invalid: N('error buzz'), undo: N('rewind') }[ev];
+  return key ? T(key) : ev;
 }
 
 // ---- daily: device clock, local score; hosted shows the platform board ----
 // Standalone the game makes no network request: the daily seed derives from
 // the device clock's UTC day.
 function dailyResult() {
-  return { ok: true, message: platform.hosted() ? 'Daily score kept on your profile.' : 'Daily score kept locally.' };
+  const hosted = platform.hosted();
+  return { ok: true, message: () => (hosted ? T('Daily score kept on your profile.') : T('Daily score kept locally.')) };
 }
 
 async function fetchDailyBoard() {
@@ -72,29 +75,33 @@ function themeOf(level) { return THEMES.find(t => t.id === level.theme) || THEME
 function objectiveText() {
   const s = sess.session.state;
   const need = s.heroTotal - s.stats.savedCount;
-  if (need <= 0) return 'Every villager is safe.';
-  return `Rescue ${need} villager${need === 1 ? '' : 's'} with water. Keep lava away.`;
+  if (need <= 0) return T('Every villager is safe.');
+  return need === 1 ? T('Rescue {n} villager with water. Keep lava away.', { n: need })
+    : T('Rescue {n} villagers with water. Keep lava away.', { n: need });
 }
 
+let lastHint = null; // re-shown when the HUD re-renders in a new language
 function refreshHud(hint) {
+  lastHint = hint || null;
+  if (typeof hint === 'function') hint = hint();
   const s = sess.session.state;
   const legal = sess.legalActions().map(a => a.pinId);
   if (selectedPin && !legal.includes(selectedPin)) selectedPin = legal[0] || null;
   if (!selectedPin && legal.length) selectedPin = legal[0];
   ui.hud({
-    title: sess.session.level.name || (sess.session.mode === 'tutorial' && lesson ? lesson.title : sess.session.level.id),
+    title: sess.session.level.name ? levelLabel(sess.session.level) : (sess.session.mode === 'tutorial' && lesson ? T(lesson.title) : sess.session.level.id),
     objective: objectiveText(),
     moves: s.stats.moves, par: s.par, moveLimit: s.moveLimit,
     saved: s.stats.savedCount, heroTotal: s.heroTotal,
     score: sess.score().total,
     canUndo: sess.session.allowUndo && sess.session.commandLog.length > 0 && sess.session.screen === 'active',
-    themeName: themeOf(sess.session.level).name,
+    themeName: T(themeOf(sess.session.level).name),
     hint: hint || null,
     player: platform.displayName(),
     sync: platform.syncLabel(),
   });
   ui.pinSelector(legal, selectedPin);
-  ui.updateMirror(s, sess.session.level.name || sess.session.level.id);
+  ui.updateMirror(s, sess.session.level.name ? levelLabel(sess.session.level) : sess.session.level.id);
   if (view) { view.sync(s); view.select(selectedPin); }
   ui.coach(coachContent(s, legal));
 }
@@ -105,12 +112,12 @@ function refreshHud(hint) {
 // caption alone is invisible to sighted players).
 const TOUCH = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
 function controlTip(step) {
-  const pick = TOUCH ? 'Tap a brass pin to select it' : 'Click or hover a brass pin to select it';
-  const confirm = TOUCH ? 'tap it again' : 'click it again or press Enter';
   switch (step) {
-    case 'select': return `${pick} — or use the buttons under “Pins you can pull”, or the arrow keys.`;
-    case 'pull':   return `Selected. Now ${confirm} to pull it. One press on its button in the list also pulls it.`;
-    case 'flow':   return 'Water falls and spreads sideways: blue water rescues villagers, orange lava is deadly. H = hint · Esc = pause & settings.';
+    case 'select': return TOUCH ? T('Tap a brass pin to select it — or use the buttons under “Pins you can pull”, or the arrow keys.')
+      : T('Click or hover a brass pin to select it — or use the buttons under “Pins you can pull”, or the arrow keys.');
+    case 'pull':   return TOUCH ? T('Selected. Now tap it again to pull it. One press on its button in the list also pulls it.')
+      : T('Selected. Now click it again or press Enter to pull it. One press on its button in the list also pulls it.');
+    case 'flow':   return T('Water falls and spreads sideways: blue water rescues villagers, orange lava is deadly. H = hint · Esc = pause & settings.');
     default: return '';
   }
 }
@@ -128,16 +135,16 @@ function coachContent(state, legal) {
   if (!step && !isTutorial) return null;
   const stepIdx = { select: 1, pull: 2, flow: 3 }[step];
   return {
-    step: isTutorial ? `Lesson ${getTutorial().findIndex(t => t.level.id === sess.session.level.id) + 1} of ${getTutorial().length}` : (step ? `How to play · ${stepIdx} of 3` : ''),
-    title: isTutorial ? lesson.title : (step === 'select' ? 'Choose a pin' : step === 'pull' ? 'Pull it' : 'Watch the flow'),
-    text: isTutorial ? lesson.text : controlTip(step),
+    step: isTutorial ? T('Lesson {n} of {total}', { n: getTutorial().findIndex(t => t.level.id === sess.session.level.id) + 1, total: getTutorial().length }) : (step ? T('How to play · {n} of 3', { n: stepIdx }) : ''),
+    title: isTutorial ? T(lesson.title) : (step === 'select' ? T('Choose a pin') : step === 'pull' ? T('Pull it') : T('Watch the flow')),
+    text: isTutorial ? T(lesson.text) : controlTip(step),
     tip: isTutorial && step ? controlTip(step) : '',
-    dismiss: step ? 'Got it' : null,
+    dismiss: step ? T('Got it') : null,
   };
 }
 
 function startLevel(level, mode, tutorialLesson) {
-  if (level.excluded) { ui.error('This day is excluded from ranking (defective content).'); return; }
+  if (level.excluded) { ui.error(T('This day is excluded from ranking (defective content).')); return; }
   sess = createSession({ storage, level, mode: mode || 'journey', practice: mode === 'practice' || mode === 'tutorial', now: Date.now() });
   sess.transition('preparing', 'level-selected');
   cmdCounter = 0;
@@ -149,7 +156,7 @@ function startLevel(level, mode, tutorialLesson) {
   sess.transition(mode === 'tutorial' ? 'tutorial' : 'countdown', 'start');
   if (tutorialLesson) announceLesson(tutorialLesson);
   let n = 2;
-  ui.countdownScreen('Ready…');
+  ui.countdownScreen(() => T('Ready…'));
   const mySession = sess; // a newer startLevel must not be advanced by this timer
   const step = () => {
     if (sess !== mySession) return;
@@ -170,14 +177,14 @@ let helpReturn = 'pause';
 function announceLesson(l) {
   lesson = l;
   setTimeout(() => ui.error(''), 0);
-  ui.caption(l.title + ': ' + l.text);
+  ui.caption(T(l.title) + ': ' + T(l.text));
 }
 
 function pullPin(pinId) {
   if (!sess || sess.session.screen !== 'active') return;
   const res = sess.dispatch({ id: sess.session.id + '-' + (++cmdCounter), type: 'pull', pinId });
   if (!res.ok) {
-    if (!res.duplicate) { audio.play('invalid'); ui.error('Cannot pull that pin: ' + res.error); }
+    if (!res.duplicate) { audio.play('invalid'); ui.error(T('Cannot pull that pin: {reason}', { reason: res.error })); }
     refreshHud();
     return;
   }
@@ -240,8 +247,8 @@ function titleOpts() {
            signedIn: platform.hosted(), canSignIn: platform.canSignIn() };
 }
 function accountLine() {
-  if (platform.hosted()) return `Signed in as ${platform.displayName()} · ${platform.syncLabel() || 'cloud save'}`;
-  return 'Progress is stored locally (versioned, checksummed).';
+  if (platform.hosted()) return () => T('Signed in as {name} · {sync}', { name: platform.displayName(), sync: platform.syncLabel() || T('cloud save') });
+  return () => T('Progress is stored locally (versioned, checksummed).');
 }
 
 // ---- UI action handlers ----
@@ -275,7 +282,7 @@ const actions = {
     if (!sess) return;
     const r = sess.undo();
     if (r.ok) { audio.play('undo'); selectedPin = null; refreshHud(); }
-    else ui.error('Undo: ' + r.error);
+    else ui.error(T('Undo: {reason}', { reason: r.error }));
   },
   hint: () => {
     if (!sess) return;
@@ -284,9 +291,9 @@ const actions = {
     // a losing pin is worse than none.
     const res = solveState(sess.session.state);
     const hint = res.solvable
-      ? `Try pin ${res.first} — it is on a winning line from here.`
-      : res.reason === 'node-budget-exceeded' ? 'Hint search limit reached — try another move.'
-      : 'No winning line from this position — undo (practice) or retry.';
+      ? () => T('Try pin {id} — it is on a winning line from here.', { id: res.first })
+      : res.reason === 'node-budget-exceeded' ? () => T('Hint search limit reached — try another move.')
+      : () => T('No winning line from this position — undo (practice) or retry.');
     refreshHud(hint);
   },
   pause: () => {
@@ -349,11 +356,11 @@ const actions = {
     let doc = null;
     try { doc = JSON.parse(storage.getItem('rescue-pins:last') || 'null'); } catch { doc = null; }
     const lv = doc && findLevel(doc.levelId);
-    if (!lv) { ui.error('No saved game to continue.'); return; }
+    if (!lv) { ui.error(T('No saved game to continue.')); return; }
     sess = createSession({ storage, level: lv, mode: doc.mode || 'journey', now: Date.now() });
     if (!sess.loadSnapshot('rescue-pins:last', findLevel)) {
       sess = null;
-      ui.error('Saved game was corrupted and could not be restored.');
+      ui.error(T('Saved game was corrupted and could not be restored.'));
       return;
     }
     cmdCounter = 0;
@@ -482,10 +489,9 @@ async function boot() {
 
   view = createRenderer(ui.canvasHost, { settings });
   if (!view) {
-    ui.showWebglFallback('3D rendering (WebGL) is unavailable in this browser. ' +
-      'You can still play using the pin list in the status rail — every action has a text equivalent.');
+    ui.showWebglFallback(() => T('3D rendering (WebGL) is unavailable in this browser. You can still play using the pin list in the status rail — every action has a text equivalent.'));
   } else {
-    view.onContextLost(() => ui.showWebglFallback('Graphics context was lost. Your progress is saved; reload to restore 3D view.'));
+    view.onContextLost(() => ui.showWebglFallback(() => T('Graphics context was lost. Your progress is saved; reload to restore 3D view.')));
     wirePointer();
   }
 
@@ -493,12 +499,18 @@ async function boot() {
   journey = getJourney(); // deterministic, solver-verified at first use (~1s)
   void t0;
 
-  // Hosted: prefer the remote cloud save over the local cache (conflict rule
-  // per platform contract); queue a mirror upload so the slot exists.
+  // Hosted: merge the cloud save with this device's progress (best of each
+  // side, never overwrite either) and queue the merge so the slot exists.
   if (platform.hosted()) {
     const remote = await platform.loadCloudSave();
-    if (remote) { prog = remote; saveProgression(prog, storage); }
+    if (remote) { prog = mergeProgression(prog, remote); saveProgression(prog, storage); }
     platform.queueCloudSave(prog);
+    // Another device saved since our load: reload, merge, save again.
+    platform.onConflict((doc) => {
+      if (doc) { prog = mergeProgression(prog, doc); saveProgression(prog, storage); }
+      if (!sess || sess.session.screen === 'title') ui.titleScreen(prog, titleOpts());
+      return prog;
+    });
   }
 
   // AudioContext may only start after a user gesture (browser autoplay policy)
@@ -511,5 +523,16 @@ async function boot() {
   ui.titleScreen(prog, titleOpts());
   requestAnimationFrame(loop);
 }
+
+// Language change (Settings → Language or the account preference arriving):
+// js/i18n.js re-applied the static markup; the UI re-renders its texts in
+// place, and the HUD/coach are rebuilt from the current state.
+onLanguage(() => {
+  if (!ui) return;
+  ui.relabel();
+  if (sess && sess.session.screen === 'active') refreshHud(lastHint);
+  else if (sess && sess.session.state) ui.updateMirror(sess.session.state, sess.session.level.name ? levelLabel(sess.session.level) : sess.session.level.id);
+  ui.setSync(platform.syncLabel());
+});
 
 boot();

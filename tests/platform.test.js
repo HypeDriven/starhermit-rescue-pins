@@ -37,7 +37,7 @@ function stubNet() {
     if (url === `/api/v1/users/${USER}/profile`) return json(200, { username: 'mira_x', nickname: 'Mira' });
     if (url === '/api/v1/me/cloud-saves/game%3Arescue-pins') {
       if (method === 'GET') return store.save ? new Response(store.save, { status: 200 }) : json(404, {});
-      if (method === 'PUT') { store.save = Buffer.from(JSON.parse(init.body).dataBase64, 'base64'); return json(200, {}); }
+      if (method === 'PUT') { store.save = Buffer.from(JSON.parse(init.body).dataBase64, 'base64'); return json(200, { etag: `"v${calls.length}"` }); }
     }
     if (url === '/api/v1/games/rescue-pins/settings') {
       if (method === 'GET') return json(200, { settings: { audio: { music: 0.1 }, captions: false } });
@@ -112,7 +112,7 @@ test('tampered cloud save is rejected', async () => {
 
 test('standalone: no network, local defaults, sign-in only on the platform host', async () => {
   const net = stubNet();
-  const p = boot(fakeWindow('', 'rescue-pins.starhermit.com'), net);
+  const p = boot(fakeWindow('', '0b9d6f2e-3c4a-4e5b-9a7c-1d2e3f405162.starhermit.com'), net);
   try {
     assert.equal(p.hosted(), false);
     assert.equal(p.canSignIn(), true);
@@ -132,4 +132,60 @@ test('standalone: no network, local defaults, sign-in only on the platform host'
   } finally { cleanup(); }
   const local = boot(fakeWindow('', 'localhost'), stubNet());
   try { assert.equal(local.canSignIn(), false); } finally { cleanup(); }
+});
+
+test('hosted: a save conflict reloads the cloud copy, merges it (onConflict) and saves again', async () => {
+  const { mergeProgression } = await import('../js/session.js');
+  // ETag-versioned slot: writes after a load are conditional (If-Match / If-None-Match).
+  let slot = null, version = 0;
+  const puts = [];
+  const fetch = async (url, init = {}) => {
+    const method = init.method || 'GET';
+    const h = init.headers || {};
+    const json = (code, body) => new Response(JSON.stringify(body), { status: code, headers: { 'Content-Type': 'application/json' } });
+    if (url.endsWith('/profile')) return json(200, { nickname: 'Mira' });
+    if (url === '/api/v1/me/cloud-saves/game%3Arescue-pins/info') return json(200, slot ? { exists: true, etag: `"v${version}"` } : { exists: false });
+    if (url === '/api/v1/me/cloud-saves/game%3Arescue-pins') {
+      if (method === 'GET') return slot ? new Response(slot, { status: 200 }) : json(404, {});
+      const cur = slot ? `"v${version}"` : null;
+      puts.push(h['If-Match'] || h['If-None-Match'] || null);
+      if ((h['If-Match'] && h['If-Match'] !== cur) || (h['If-None-Match'] === '*' && slot)) return json(412, { error: 'precondition failed', etag: cur });
+      slot = Buffer.from(JSON.parse(init.body).dataBase64, 'base64');
+      version++;
+      return json(200, { etag: `"v${version}"` });
+    }
+    return json(404, {});
+  };
+  const p = boot(fakeWindow('#game_token=' + TOKEN), { fetch });
+  try {
+    assert.equal(await p.loadCloudSave(), null); // empty slot: the first write is If-None-Match: *
+    let prog = { v: 1, completed: { 'j-1': true }, bestScores: { 'j-1': 900 }, tutorialDone: false, streakDays: [3], achievements: ['first-rescue'], rescuedTotal: 12 };
+    p.onConflict((doc) => { prog = mergeProgression(prog, doc); return prog; });
+    p.queueCloudSave(prog);
+    p.flushCloudSave();
+    await sleep(30);
+    assert.equal(puts[0], '*');
+
+    // Another device saves different progress (checksummed like the game's writes).
+    const other = { v: 1, completed: { 'j-1': true, 'j-2': true }, bestScores: { 'j-1': 700, 'j-2': 1200 }, tutorialDone: true, streakDays: [4], achievements: ['mechanic-mastery'], rescuedTotal: 30 };
+    const { hashString, stableStringify } = await import('../js/rules.js');
+    const doc = { ...other };
+    doc.checksum = hashString(stableStringify({ ...doc, checksum: undefined }));
+    slot = Buffer.from(globalThis.StarHermit._zip('save.json', new TextEncoder().encode(JSON.stringify(doc))));
+    version++;
+
+    p.queueCloudSave({ ...prog, rescuedTotal: 13 });
+    p.flushCloudSave(); // refused (412) → saveconflict → reload, merge, save
+    for (let i = 0; i < 50 && puts.length < 3; i++) await sleep(5);
+    await globalThis.StarHermit.flushSave();
+    assert.equal(globalThis.StarHermit.saveConflicted(), false);
+    assert.equal(puts.at(-1), '"v2"', 'merged doc written on top of the other device\'s version');
+    const saved = await p.loadCloudSave();
+    assert.deepEqual(saved.completed, { 'j-1': true, 'j-2': true });
+    assert.deepEqual(saved.bestScores, { 'j-1': 900, 'j-2': 1200 });
+    assert.equal(saved.tutorialDone, true);
+    assert.deepEqual(saved.streakDays, [3, 4]);
+    assert.deepEqual(saved.achievements.sort(), ['first-rescue', 'mechanic-mastery']);
+    assert.equal(saved.rescuedTotal, 30);
+  } finally { cleanup(); }
 });

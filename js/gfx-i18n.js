@@ -1,5 +1,6 @@
 // Rescue Pins — localized strings for the Settings screen's Graphics controls.
-// The rest of the game is English-only; these follow navigator.language.
+// They follow the game language (js/i18n.js via ./lang.js), like the rest of the UI.
+import { lang } from './lang.js';
 
 const EN = {
   settings: 'Settings', back: 'Back', graphics: 'Graphics', display: 'Display',
@@ -119,6 +120,5 @@ export function pickLocale(tag) {
 }
 
 export function gfxStrings(tag) {
-  const nav = typeof navigator !== 'undefined' ? navigator.language : 'en-US';
-  return GFX_STRINGS[pickLocale(tag || nav)];
+  return GFX_STRINGS[pickLocale(tag || lang())];
 }
