@@ -441,7 +441,8 @@ export function createUI(root, actions, settings) {
     const paint = () => {
       const i = actions.gfxInfo();
       const res = i ? i.resolved : r;
-      summary.textContent = `${(i && i.gpu) || T.unknownGpu} · ${describe(res, i ? i.pixels : null, T.summary)}`;
+      summary.textContent = [(i && i.gpu) || T.unknownGpu, i && i.level != null ? T.level.replace('{n}', i.level) : null,
+        describe(res, i ? i.pixels : null, T.summary)].filter(Boolean).join(' · ');
       summary.dataset.preset = res.preset;
       note.hidden = !(i && i.postFailed);
     };

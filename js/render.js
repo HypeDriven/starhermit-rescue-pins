@@ -13,7 +13,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { detectPreset, resolve, SHADOW_MAP, PARTICLE_COUNT } from './gfx.js';
+import { detectLevel, presetForLevel, resolve, particleCount, SHADOW_MAP } from './gfx.js';
 
 // authored framing constants (no magic offsets scattered through code)
 export const FRAMING = {
@@ -69,9 +69,20 @@ class ChamberGTAOPass extends GTAOPass {
 // ---- procedural textures (canvas, deterministic) ----
 function rng(seed) { let s = seed >>> 0; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); }
 
-function brickCanvas() {
-  const c = document.createElement('canvas'); c.width = c.height = 256;
+// Run a post pass at a fraction of the frame: EffectComposer.addPass/setSize hand every pass the full
+// frame size, so the pass's own setSize applies the budget's scale (half-res bloom/GTAO below Ultra).
+function atScale(pass, k) {
+  if (!(k < 1)) return pass;
+  const setSize = pass.setSize.bind(pass);
+  pass.setSize = (w, h) => setSize(Math.max(1, Math.round(w * k)), Math.max(1, Math.round(h * k)));
+  return pass;
+}
+
+// Procedural textures are authored at a fixed size and drawn into the preset's texture budget.
+function brickCanvas(n = 256) {
+  const c = document.createElement('canvas'); c.width = c.height = n;
   const g = c.getContext('2d'); const r = rng(7);
+  g.scale(n / 256, n / 256);
   g.fillStyle = '#8a8a8a'; g.fillRect(0, 0, 256, 256); // mortar
   const rows = 8, bh = 256 / rows;
   for (let y = 0; y < rows; y++) {
@@ -90,9 +101,10 @@ function brickCanvas() {
   return c;
 }
 
-function blotchCanvas(seed, dark, light) {
-  const c = document.createElement('canvas'); c.width = c.height = 128;
+function blotchCanvas(seed, dark, light, n = 128) {
+  const c = document.createElement('canvas'); c.width = c.height = n;
   const g = c.getContext('2d'); const r = rng(seed);
+  g.scale(n / 128, n / 128);
   g.fillStyle = dark; g.fillRect(0, 0, 128, 128);
   for (let i = 0; i < 70; i++) {
     const x = r() * 128, y = r() * 128, rad = 6 + r() * 18;
@@ -169,7 +181,14 @@ export function createRenderer(container, opts) {
   renderer.shadowMap.type = THREE.PCFShadowMap;
 
   const gpu = readGpu(renderer);
-  const detected = detectPreset(gpu, isMobileDevice());
+  // StarHermit hardware level (js/gpu-level.js): renderer string + device facts (phone/tablet, cores, memory).
+  let sys = { mobile: isMobileDevice(), webgl2: renderer.capabilities.isWebGL2 };
+  try {
+    const G = globalThis.StarHermitGpu;
+    if (G) { const d = G.detectSystem(); sys = { ...sys, mobile: sys.mobile || d.mobile, touch: d.touch, screen: d.screen, cores: d.cores, memoryGb: d.memoryGb, astc: d.astc }; }
+  } catch { /* defaults */ }
+  const gpuLevel = detectLevel(gpu, sys);
+  const detected = presetForLevel(gpuLevel);
 
   const scene = new THREE.Scene();
   const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 100);
@@ -209,7 +228,7 @@ export function createRenderer(container, opts) {
   let onContextLost = null;
 
   // graphics state
-  let q = resolve({}, detected);
+  let q = resolve({}, detected, gpuLevel);
   let envTex = null;
   let composer = null, postKey = null, postFailed = false, gradePass = null;
   let pixelRatio = 1, size = [0, 0];
@@ -258,6 +277,20 @@ export function createRenderer(container, opts) {
     selectedPinId = null;
 
     const detailed = q.detail === 'detailed';
+    // Shading per the preset's budget: Lambert on Low, Standard on Balanced, Physical (clear-coated water and
+    // villagers, glass, brass) on High/Ultra; brick bump only where the budget allows. Colours, emission and
+    // opacity are unchanged, so chambers and pins read the same on every preset.
+    const bud = q.budget;
+    const seg = (n, min = 3) => Math.max(min, Math.round(n * bud.seg));
+    const surface = (p, physical = false) => {
+      const { roughness, metalness, clearcoat, clearcoatRoughness, envMapIntensity, bumpMap, bumpScale, ...base } = p;
+      if (bud.material === 'lambert') return new THREE.MeshLambertMaterial(base);
+      const std = { ...base, roughness: roughness ?? 1, metalness: metalness ?? 0 };
+      if (envMapIntensity !== undefined) std.envMapIntensity = envMapIntensity;
+      if (bumpMap && bud.bump) Object.assign(std, { bumpMap, bumpScale });
+      if (bud.material === 'standard' || !physical) return new THREE.MeshStandardMaterial(std);
+      return new THREE.MeshPhysicalMaterial({ ...std, ...(clearcoat ? { clearcoat, clearcoatRoughness: clearcoatRoughness || 0 } : {}) });
+    };
     const themeDef = theme || { sky: 0x20242c, stone: 0x777777, accent: 0x7fe0a8 };
     if (detailed) {
       const sky = track(new THREE.CanvasTexture(skyCanvas(themeDef.sky, themeDef.accent)));
@@ -272,38 +305,38 @@ export function createRenderer(container, opts) {
 
     // stone: brick texture + bump when detailed; one material per box so the
     // brick repeat follows each box's size
-    const brick = detailed ? track(new THREE.CanvasTexture(brickCanvas())) : null;
+    const brick = detailed ? track(new THREE.CanvasTexture(brickCanvas(bud.brick))) : null;
     if (brick) { brick.colorSpace = THREE.SRGBColorSpace; brick.wrapS = brick.wrapT = THREE.RepeatWrapping; brick.anisotropy = 4; }
-    const plainStone = track(new THREE.MeshStandardMaterial({ color: themeDef.stone, roughness: 0.9, envMapIntensity: 0.06 }));
+    const plainStone = track(surface({ color: themeDef.stone, roughness: 0.9, envMapIntensity: 0.06 }));
     const stoneMat = (w, h) => {
       if (!brick) return plainStone;
       const map = track(brick.clone());
       map.repeat.set(Math.max(0.5, w / 2.4), Math.max(0.5, h / 1.4));
       map.needsUpdate = true;
-      return track(new THREE.MeshStandardMaterial({ color: themeDef.stone, roughness: 0.88, map, bumpMap: map, bumpScale: 1.4, envMapIntensity: 0.06 }));
+      return track(surface({ color: themeDef.stone, roughness: 0.88, map, bumpMap: map, bumpScale: 1.4, envMapIntensity: 0.06 }));
     };
-    glassMat = track(new THREE.MeshPhysicalMaterial({ color: palette.glass, transparent: true, opacity: composer ? 0.018 : 0.12, roughness: 0.06,
-      metalness: 0, envMapIntensity: 0.15, depthWrite: false }));
+    glassMat = track(surface({ color: palette.glass, transparent: true, opacity: composer ? 0.018 : 0.12, roughness: 0.06,
+      metalness: 0, envMapIntensity: 0.15, depthWrite: false }, true));
     // dark chamber interior: liquids, villagers and pins read against it, and
     // the pale stone frame reads against the interior — a real cutaway.
-    const interiorMat = track(new THREE.MeshStandardMaterial({ color: new THREE.Color(themeDef.sky).multiplyScalar(0.9), roughness: 1, envMapIntensity: 0.03 }));
+    const interiorMat = track(surface({ color: new THREE.Color(themeDef.sky).multiplyScalar(0.9), roughness: 1, envMapIntensity: 0.03 }));
     const frameMat = track(new THREE.LineBasicMaterial({ color: palette.frame, transparent: true, opacity: 0.9 }));
-    const slotMat = track(new THREE.MeshStandardMaterial({ color: 0x14100a, roughness: 1, envMapIntensity: 0.03 }));
-    const waterMat = track(new THREE.MeshPhysicalMaterial({ color: palette.water, roughness: 0.15, clearcoat: 0.5, clearcoatRoughness: 0.1,
-      emissive: palette.water, emissiveIntensity: 0.5 * LIGHT, envMapIntensity: 0.05 }));
+    const slotMat = track(surface({ color: 0x14100a, roughness: 1, envMapIntensity: 0.03 }));
+    const waterMat = track(surface({ color: palette.water, roughness: 0.15, clearcoat: 0.5, clearcoatRoughness: 0.1,
+      emissive: palette.water, emissiveIntensity: 0.5 * LIGHT, envMapIntensity: 0.05 }, true));
     const surfaceMat = track(new THREE.MeshBasicMaterial({ color: new THREE.Color(palette.water).lerp(new THREE.Color(0xffffff), 0.3) }));
     if (detailed) {
-      lavaTex = track(new THREE.CanvasTexture(blotchCanvas(3, '#5a1400', 'rgba(255,230,150,0.95)')));
+      lavaTex = track(new THREE.CanvasTexture(blotchCanvas(3, '#5a1400', 'rgba(255,230,150,0.95)', bud.lava)));
       lavaTex.colorSpace = THREE.SRGBColorSpace; lavaTex.wrapS = lavaTex.wrapT = THREE.RepeatWrapping;
     } else lavaTex = null;
     // plain: flat glow as before; detailed: flowing crust with hot cracks bright
     // enough (above the bloom threshold) to glow
-    lavaMat = track(new THREE.MeshStandardMaterial({ color: palette.lava, roughness: 0.5,
+    lavaMat = track(surface({ color: palette.lava, roughness: 0.5,
       emissive: detailed ? new THREE.Color(palette.lava).lerp(new THREE.Color(0xffffff), 0.45) : palette.lava,
       emissiveIntensity: detailed ? LAVA_GLOW : 0.7 * LIGHT, emissiveMap: lavaTex, envMapIntensity: 0.05 }));
-    const heroMat = track(new THREE.MeshPhysicalMaterial({ color: palette.hero, roughness: 0.55, clearcoat: 0.3, envMapIntensity: 0.08 }));
+    const heroMat = track(surface({ color: palette.hero, roughness: 0.55, clearcoat: 0.3, envMapIntensity: 0.08 }, true));
     const eyeMat = track(new THREE.MeshBasicMaterial({ color: 0x1a1410 }));
-    const hatMat = track(new THREE.MeshStandardMaterial({ color: 0x6b3b2a, roughness: 0.8, envMapIntensity: 0.08 }));
+    const hatMat = track(surface({ color: 0x6b3b2a, roughness: 0.8, envMapIntensity: 0.08 }));
 
     const shadowy = (m, cast = true, receive = true) => { m.castShadow = cast; m.receiveShadow = receive; return m; };
 
@@ -347,12 +380,12 @@ export function createRenderer(container, opts) {
           group.add(surface);
         }
         const hero = new THREE.Group();
-        const body = shadowy(new THREE.Mesh(track(new THREE.CapsuleGeometry(0.32, 0.5, 4, 12)), heroMat));
-        const head = shadowy(new THREE.Mesh(track(new THREE.SphereGeometry(0.24, 16, 12)), heroMat));
+        const body = shadowy(new THREE.Mesh(track(new THREE.CapsuleGeometry(0.32, 0.5, seg(4, 2), seg(12, 8))), heroMat));
+        const head = shadowy(new THREE.Mesh(track(new THREE.SphereGeometry(0.24, seg(16, 10), seg(12, 8))), heroMat));
         head.position.y = 0.65;
         hero.add(body, head);
         if (detailed) {
-          const hat = shadowy(new THREE.Mesh(track(new THREE.ConeGeometry(0.27, 0.32, 14)), hatMat));
+          const hat = shadowy(new THREE.Mesh(track(new THREE.ConeGeometry(0.27, 0.32, seg(14, 8))), hatMat));
           hat.position.y = 0.93;
           hero.add(hat);
           for (const ex of [-0.08, 0.08]) {
@@ -372,13 +405,12 @@ export function createRenderer(container, opts) {
     // Each pin gets its OWN material instance: the selection highlight writes
     // emissive per pin, and a shared material would light up every pin at once.
     for (const p of def.pins) {
-      const pinMat = track(new THREE.MeshPhysicalMaterial({ color: palette.pin, metalness: 0.85, roughness: 0.3,
-        envMapIntensity: 0.1 }));
+      const pinMat = track(surface({ color: palette.pin, metalness: 0.85, roughness: 0.3, envMapIntensity: 0.1 }, true));
       pinMats.push(pinMat);
       const a = cellCenter(p.a[0], p.a[1], def), b = cellCenter(p.b[0], p.b[1], def);
       const mid = a.clone().add(b).multiplyScalar(0.5);
       const horizontal = p.a[1] !== p.b[1]; // separates rows -> pin lies horizontally
-      const geo = track(new THREE.CylinderGeometry(FRAMING.pinRad, FRAMING.pinRad, FRAMING.pinLen, detailed ? 20 : 10));
+      const geo = track(new THREE.CylinderGeometry(FRAMING.pinRad, FRAMING.pinRad, FRAMING.pinLen, seg(detailed ? 20 : 10, 8)));
       const m = shadowy(new THREE.Mesh(geo, pinMat), true, false);
       m.position.set(0, 0, 0.6);
       // dark slot behind the pin so brass stays legible against pale stone
@@ -388,7 +420,7 @@ export function createRenderer(container, opts) {
       envGroup.add(slot);
       m.rotation.z = horizontal ? Math.PI / 2 : 0;
       // ring handle
-      const ring = shadowy(new THREE.Mesh(track(new THREE.TorusGeometry(0.32, 0.09, detailed ? 12 : 8, detailed ? 28 : 16)), pinMat), true, false);
+      const ring = shadowy(new THREE.Mesh(track(new THREE.TorusGeometry(0.32, 0.09, seg(detailed ? 12 : 8, 6), seg(detailed ? 28 : 16, 12))), pinMat), true, false);
       ring.position.set(horizontal ? FRAMING.pinLen / 2 + 0.2 : 0,
                         horizontal ? 0 : FRAMING.pinLen / 2 + 0.2, 0.6);
       // group anchored at the pin's world position so selection/lift poses
@@ -398,7 +430,7 @@ export function createRenderer(container, opts) {
       pinGroup.userData.base = mid.clone();
       pinGroup.add(m, ring);
       if (detailed) { // rounded tip opposite the handle
-        const tip = new THREE.Mesh(track(new THREE.SphereGeometry(FRAMING.pinRad * 1.05, 14, 10)), pinMat);
+        const tip = new THREE.Mesh(track(new THREE.SphereGeometry(FRAMING.pinRad * 1.05, seg(14, 8), seg(10, 6))), pinMat);
         tip.position.set(horizontal ? -FRAMING.pinLen / 2 : 0, horizontal ? 0 : -FRAMING.pinLen / 2, 0.6);
         tip.userData.pinId = p.id;
         pinGroup.add(tip);
@@ -437,7 +469,7 @@ export function createRenderer(container, opts) {
   }
 
   function buildParticles(W, H) {
-    const n = PARTICLE_COUNT[q.particles] || 0;
+    const n = particleCount(q);
     if (!n) return;
     const dot = track(new THREE.CanvasTexture(dotCanvas()));
     const r = rng(11);
@@ -582,7 +614,7 @@ export function createRenderer(container, opts) {
   /** Apply saved graphics settings ({ preset, render_scale, adaptive, show_fps, <category> }). */
   function setGraphics(saved) {
     const prev = q;
-    q = resolve(saved || {}, detected);
+    q = resolve(saved || {}, detected, gpuLevel);
     adaptiveScale = 1;
     frameTimes = [];
     postKey = null; // rebuild the post chain on the next frame
@@ -591,7 +623,9 @@ export function createRenderer(container, opts) {
     renderer.domElement.dataset.gfxPreset = q.preset;
     document.body.dataset.gfxPreset = q.preset;
     // detail + particle counts change geometry: rebuild the level view
-    if (level && (prev.detail !== q.detail || prev.particles !== q.particles)) {
+    const pb = prev.budget, b = q.budget;
+    const assetsChanged = ['material', 'brick', 'bump', 'lava', 'seg'].some((k) => pb[k] !== b[k]);
+    if (level && (prev.detail !== q.detail || particleCount(prev) !== particleCount(q) || assetsChanged)) {
       const sel = selectedPinId;
       build(level.lastState, level.def, level.theme);
       select(sel);
@@ -604,7 +638,7 @@ export function createRenderer(container, opts) {
   /** What the settings panel shows: GPU, auto choice, resolved tiers, pixels, frame rate. */
   function graphicsInfo() {
     return {
-      gpu, detected, resolved: q,
+      gpu, level: gpuLevel, detected, resolved: q,
       pixels: [Math.round(size[0] * pixelRatio), Math.round(size[1] * pixelRatio)],
       fps: Math.round(fps), adaptiveScale: Math.round(adaptiveScale * 100) / 100, postFailed,
     };
@@ -639,11 +673,11 @@ export function createRenderer(container, opts) {
         ao.blendIntensity = 0.75;
         ao.updateGtaoMaterial({ radius: 0.6, distanceExponent: 1.5, thickness: 1.0, scale: 1.0, samples: q.ao === 'high' ? 16 : 8 });
         ao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: q.ao === 'high' ? 6 : 4, rings: 2, samples: q.ao === 'high' ? 16 : 8 });
-        c.addPass(ao);
+        c.addPass(atScale(ao, q.budget.aoRes));
       }
       if (q.bloom === 'on') {
         // high threshold: only lava, torch flames, embers and the selection glow bloom
-        c.addPass(new UnrealBloomPass(new THREE.Vector2(w, h), 0.5, 0.45, 0.9));
+        c.addPass(atScale(new UnrealBloomPass(new THREE.Vector2(w, h), 0.5, 0.45, 0.9), q.budget.bloomRes));
       }
       if (q.grade === 'on') {
         gradePass = new ShaderPass(GradeShader);
@@ -747,7 +781,7 @@ export function createRenderer(container, opts) {
     animate(time, dt / 1000);
     if (adapt(dt)) resize();
     else if (container.clientWidth !== size[0] || container.clientHeight !== size[1]) resize();
-    const k = q.post && !postFailed ? [q.ao, q.bloom, q.grade, q.antialias, size[0], size[1], pixelRatio].join('|') : 'none';
+    const k = q.post && !postFailed ? [q.ao, q.bloom, q.grade, q.antialias, q.budget.bloomRes, q.budget.aoRes, size[0], size[1], pixelRatio].join('|') : 'none';
     if (k !== postKey) {
       postKey = k;
       buildPost(size[0], size[1]);

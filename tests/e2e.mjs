@@ -74,6 +74,7 @@ async function graphicsSettings(page, shot, mobile) {
   await page.waitForTimeout(300);
   const summary = await page.locator('#gfx-summary').innerText();
   if (/bloom/.test(summary) || !/\d+×\d+ px/.test(summary)) throw new Error('summary not updated: ' + summary);
+  if (!/ · Level 0 · /.test(summary)) throw new Error('summary lacks the hardware level: ' + summary);
   // panel fits the viewport (no horizontal cut-off)
   const vw = page.viewportSize().width;
   const box = await page.locator('.rp-overlay:not([hidden]) .rp-panel').boundingBox();
