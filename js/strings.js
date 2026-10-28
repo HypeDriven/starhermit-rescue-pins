@@ -47,22 +47,11 @@
     ['No winning line from this position — undo (practice) or retry.', 'No hay forma de ganar desde aquí: deshaz (práctica) o reintenta.', 'Von hier aus gibt es keinen Siegesweg – nimm zurück (Training) oder versuch es erneut.', 'Aucune issue gagnante d’ici — annulez (entraînement) ou réessayez.', 'Não há caminho para a vitória daqui — desfaça (treino) ou tente de novo.', 'Nessuna via vincente da qui: annulla (allenamento) o riprova.'],
     ['No saved game to continue.', 'No hay partida guardada para continuar.', 'Kein gespeichertes Spiel zum Fortsetzen.', 'Aucune partie enregistrée à reprendre.', 'Não há jogo salvo para continuar.', 'Nessuna partita salvata da continuare.'],
     ['Saved game was corrupted and could not be restored.', 'La partida guardada estaba dañada y no se pudo restaurar.', 'Das gespeicherte Spiel war beschädigt und konnte nicht wiederhergestellt werden.', 'La partie enregistrée était corrompue et n’a pas pu être restaurée.', 'O jogo salvo estava corrompido e não pôde ser restaurado.', 'La partita salvata era danneggiata e non è stato possibile ripristinarla.'],
-    ['3D rendering (WebGL) is unavailable in this browser. You can still play using the pin list in the status rail — every action has a text equivalent.', 'La representación 3D (WebGL) no está disponible en este navegador. Aún puedes jugar con la lista de clavijas del panel de estado: cada acción tiene un equivalente en texto.', '3D-Darstellung (WebGL) ist in diesem Browser nicht verfügbar. Du kannst trotzdem mit der Stiftliste in der Statusleiste spielen – jede Aktion gibt es auch als Text.', 'Le rendu 3D (WebGL) n’est pas disponible dans ce navigateur. Vous pouvez quand même jouer avec la liste des goupilles du panneau d’état — chaque action a un équivalent texte.', 'A renderização 3D (WebGL) não está disponível neste navegador. Você ainda pode jogar com a lista de pinos no painel de status — cada ação tem um equivalente em texto.', 'Il rendering 3D (WebGL) non è disponibile in questo browser. Puoi comunque giocare con l’elenco dei perni nel pannello di stato: ogni azione ha un equivalente testuale.'],
-    ['Graphics context was lost. Your progress is saved; reload to restore 3D view.', 'Se perdió el contexto gráfico. Tu progreso está guardado; recarga para recuperar la vista 3D.', 'Der Grafikkontext ging verloren. Dein Fortschritt ist gespeichert; lade neu, um die 3D-Ansicht wiederherzustellen.', 'Le contexte graphique a été perdu. Votre progression est enregistrée ; rechargez pour retrouver la vue 3D.', 'O contexto gráfico foi perdido. Seu progresso está salvo; recarregue para restaurar a visão 3D.', 'Il contesto grafico è andato perso. I progressi sono salvati; ricarica per ripristinare la vista 3D.'],
     ['Daily (excluded)', 'Diario (excluido)', 'Täglich (ausgenommen)', 'Quotidien (exclu)', 'Diário (excluído)', 'Giornaliera (esclusa)'],
     ['Daily {date}', 'Diario {date}', 'Täglich {date}', 'Quotidien {date}', 'Diário {date}', 'Giornaliera {date}'],
 
     // ---- shell
-    ['Objective and progression', 'Objetivo y progreso', 'Ziel und Fortschritt', 'Objectif et progression', 'Objetivo e progresso', 'Obiettivo e avanzamento'],
-    ['Actions and status', 'Acciones y estado', 'Aktionen und Status', 'Actions et état', 'Ações e status', 'Azioni e stato'],
-    ['Primary actions', 'Acciones principales', 'Hauptaktionen', 'Actions principales', 'Ações principais', 'Azioni principali'],
-    ['Objective', 'Objetivo', 'Ziel', 'Objectif', 'Objetivo', 'Obiettivo'],
     ['Score', 'Puntos', 'Punkte', 'Score', 'Pontos', 'Punti'],
-    ['Errors', 'Errores', 'Fehler', 'Erreurs', 'Erros', 'Errori'],
-    ['Results', 'Resultados', 'Ergebnisse', 'Résultats', 'Resultados', 'Risultati'],
-    ['Audio captions', 'Subtítulos de audio', 'Audio-Untertitel', 'Sous-titres audio', 'Legendas de áudio', 'Sottotitoli audio'],
-    ['Board state in text', 'Estado del tablero en texto', 'Spielfeld als Text', 'État du plateau en texte', 'Estado do tabuleiro em texto', 'Stato del tavolo in testo'],
-    ['Guidance', 'Guía', 'Anleitung', 'Conseils', 'Orientação', 'Guida'],
 
     // ---- title, modes, journey, profile
     ['Pull the pins. Spare the villagers.', 'Retira las clavijas. Salva a los aldeanos.', 'Zieh die Stifte. Rette die Dorfbewohner.', 'Retirez les goupilles. Épargnez les villageois.', 'Puxe os pinos. Poupe os aldeões.', 'Tira i perni. Salva gli abitanti.'],
@@ -122,17 +111,11 @@
     ['Paused', 'En pausa', 'Pausiert', 'En pause', 'Pausado', 'In pausa'],
     ['Resume', 'Reanudar', 'Weiter', 'Reprendre', 'Continuar', 'Riprendi'],
     ['Audio', 'Audio', 'Audio', 'Audio', 'Áudio', 'Audio'],
-    ['Music', 'Música', 'Musik', 'Musique', 'Música', 'Musica'],
-    ['Effects', 'Efectos', 'Effekte', 'Effets', 'Efeitos', 'Effetti'],
-    ['Ambience', 'Ambiente', 'Atmosphäre', 'Ambiance', 'Ambiente', 'Ambiente'],
-    ['Mute all', 'Silenciar todo', 'Alles stumm', 'Tout couper', 'Silenciar tudo', 'Silenzia tutto'],
     ['Captions', 'Subtítulos', 'Untertitel', 'Sous-titres', 'Legendas', 'Sottotitoli'],
     ['Palette', 'Paleta', 'Palette', 'Palette', 'Paleta', 'Tavolozza'],
     ['Default', 'Predeterminada', 'Standard', 'Par défaut', 'Padrão', 'Predefinita'],
     ['Colorblind', 'Daltonismo', 'Farbenblind', 'Daltonisme', 'Daltonismo', 'Daltonismo'],
     ['High contrast', 'Alto contraste', 'Hoher Kontrast', 'Contraste élevé', 'Alto contraste', 'Contrasto elevato'],
-    ['Reduced motion', 'Movimiento reducido', 'Weniger Bewegung', 'Animations réduites', 'Movimento reduzido', 'Movimento ridotto'],
-    ['Larger text', 'Texto más grande', 'Größere Schrift', 'Texte plus grand', 'Texto maior', 'Testo più grande'],
     ['Controls', 'Controles', 'Steuerung', 'Commandes', 'Controles', 'Comandi'],
     ['Arrows/WASD: choose pin · Enter/Space: pull · Esc: pause/cancel · U: undo (practice) · H: hint · C: reset camera', 'Flechas/WASD: elegir clavija · Intro/Espacio: retirar · Esc: pausa/cancelar · U: deshacer (práctica) · H: pista · C: restablecer cámara', 'Pfeile/WASD: Stift wählen · Eingabe/Leertaste: ziehen · Esc: Pause/abbrechen · U: rückgängig (Training) · H: Tipp · C: Kamera zurücksetzen', 'Flèches/WASD : choisir une goupille · Entrée/Espace : retirer · Échap : pause/annuler · U : annuler (entraînement) · H : indice · C : réinitialiser la caméra', 'Setas/WASD: escolher pino · Enter/Espaço: puxar · Esc: pausar/cancelar · U: desfazer (treino) · H: dica · C: redefinir câmera', 'Frecce/WASD: scegli perno · Invio/Spazio: tira · Esc: pausa/annulla · U: annulla (allenamento) · H: indizio · C: ripristina visuale'],
     ['Left-handed tray', 'Barra para zurdos', 'Leiste für Linkshänder', 'Barre pour gauchers', 'Barra para canhotos', 'Barra per mancini'],
@@ -183,7 +166,6 @@
     ['Cloud saving…', 'Guardando en la nube…', 'Cloud-Speicherung …', 'Sauvegarde en ligne…', 'Salvando na nuvem…', 'Salvataggio cloud…'],
     ['Cloud connecting…', 'Conectando con la nube…', 'Cloud-Verbindung …', 'Connexion en ligne…', 'Conectando à nuvem…', 'Connessione al cloud…'],
     ['Cloud sync error — local copy safe', 'Error de sincronización: la copia local está a salvo', 'Cloud-Synchronisierungsfehler – lokale Kopie sicher', 'Erreur de synchronisation — copie locale en sécurité', 'Erro de sincronização — cópia local segura', 'Errore di sincronizzazione: copia locale al sicuro'],
-    ['Player {id}', 'Jugador {id}', 'Spieler {id}', 'Joueur {id}', 'Jogador {id}', 'Giocatore {id}'],
 
     // ---- content: themes, lessons, achievements
     ['Emerald Keep', 'Torreón Esmeralda', 'Smaragdfeste', 'Donjon d’émeraude', 'Torre Esmeralda', 'Rocca di smeraldo'],
@@ -210,7 +192,18 @@
     ['Ember Depths Veteran', 'Veterano de las Profundidades de Ascuas', 'Veteran der Gluttiefen', 'Vétéran des Profondeurs de braise', 'Veterano das Profundezas de Brasa', 'Veterano degli Abissi di brace'],
     ['Clear any stage in the final theme, Ember Depths.', 'Supera cualquier etapa del último tema, Profundidades de Ascuas.', 'Schaffe eine Etappe im letzten Thema, den Gluttiefen.', 'Réussissez une étape du dernier thème, Profondeurs de braise.', 'Conclua qualquer etapa do último tema, Profundezas de Brasa.', 'Supera una tappa qualsiasi dell’ultimo tema, Abissi di brace.'],
     ['Century Guardian', 'Guardián centenario', 'Hüter der Hundert', 'Gardien centenaire', 'Guardião centenário', 'Guardiano dei cento'],
-    ['Rescue 100 villagers in total.', 'Rescata a 100 aldeanos en total.', 'Rette insgesamt 100 Dorfbewohner.', 'Sauvez 100 villageois au total.', 'Resgate 100 aldeões no total.', 'Salva 100 abitanti in totale.']
+    ['Rescue 100 villagers in total.', 'Rescata a 100 aldeanos en total.', 'Rette insgesamt 100 Dorfbewohner.', 'Sauvez 100 villageois au total.', 'Resgate 100 aldeões no total.', 'Salva 100 abitanti in totale.'],
+    // ---- engine client (native/*.ts)
+    [", selected", ", seleccionada", ", ausgewählt", ", sélectionnée", ", selecionado", ", selezionato"],
+    ["Brass pin {id}", "Clavija de latón {id}", "Messingstift {id}", "Goupille en laiton {id}", "Pino de latão {id}", "Perno d’ottone {id}"],
+    ["Cannot start: {reason}", "No se puede empezar: {reason}", "Start nicht möglich: {reason}", "Impossible de commencer : {reason}", "Não foi possível começar: {reason}", "Impossibile iniziare: {reason}"],
+    ["Display", "Pantalla", "Anzeige", "Affichage", "Tela", "Schermo"],
+    ["Key bindings", "Asignación de teclas", "Tastenbelegung", "Raccourcis clavier", "Atalhos de teclado", "Assegnazione tasti"],
+    ["Open Options", "Abrir Opciones", "Optionen öffnen", "Ouvrir les options", "Abrir Opções", "Apri Opzioni"],
+    ["Preparing today's castle…", "Preparando el castillo de hoy…", "Die heutige Burg wird vorbereitet …", "Préparation du château du jour…", "Preparando o castelo de hoje…", "Preparazione del castello di oggi…"],
+    ["Progress restored from your StarHermit cloud save.", "Progreso restaurado desde tu guardado en la nube de StarHermit.", "Fortschritt aus deinem StarHermit-Cloud-Speicherstand wiederhergestellt.", "Progression restaurée depuis votre sauvegarde cloud StarHermit.", "Progresso restaurado do seu salvamento na nuvem StarHermit.", "Progressi ripristinati dal salvataggio cloud StarHermit."],
+    ["Settings", "Ajustes", "Einstellungen", "Paramètres", "Configurações", "Impostazioni"],
+    ["Volumes, mute, graphics quality, language, larger text, high contrast and reduced motion are in the StarHermit Options.", "El volumen, el silencio, la calidad gráfica, el idioma, el texto grande, el alto contraste y el movimiento reducido están en las Opciones de StarHermit.", "Lautstärke, Stummschaltung, Grafikqualität, Sprache, größere Schrift, hoher Kontrast und reduzierte Bewegung findest du in den StarHermit-Optionen.", "Le volume, la sourdine, la qualité graphique, la langue, le texte agrandi, le contraste élevé et les animations réduites se trouvent dans les options StarHermit.", "Volume, mudo, qualidade gráfica, idioma, texto maior, alto contraste e movimento reduzido ficam nas Opções do StarHermit.", "Volume, silenzioso, qualità grafica, lingua, testo più grande, contrasto elevato e movimento ridotto sono nelle Opzioni di StarHermit."],
   ];
 
   var COLS = ['es-419', 'de-DE', 'fr-FR', 'pt-BR', 'it-IT'];
@@ -241,4 +234,4 @@
   };
 
   root.RP_STRINGS = T;
-})(typeof self !== 'undefined' ? self : this);
+})(globalThis);

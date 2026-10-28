@@ -1,7 +1,6 @@
 // Rescue Pins — StarHermit platform chrome strings (sign-in, invite link) in
 // the nine supported locales, in the game language (js/i18n.js via ./lang.js).
-import { pickLocale } from './gfx-i18n.js';
-import { lang } from './lang.js';
+import { lang, pickLocale } from './lang.js';
 
 const BASE = {
   'en-US': {

@@ -1,0 +1,132 @@
+/* Rescue Pins — the browser build's index.html <style> rewritten class-based
+   for the engine's UI (`npm run css` converts it into assets/ui-style.json).
+   Element selectors, body classes (hc, big-text, lefty) and @media do not
+   convert: every widget names its classes, the breakpoints are layouts picked
+   in native/screens.ts, high contrast is a token set native/style.ts applies,
+   larger text is the runtime's text scale, and the left-handed tray is the
+   game's option. */
+
+:root {
+  --bg: #0e1115; --panel: #1b2029; --edge: #3f4a5c; --fg: #f3f6fa; --dim: #b9c3d0;
+  --accent: #8cf0b9; --accent-ink: #0c2418; --danger: #ff7d70; --danger-ink: #2a0c08;
+  --btn: #313b4c; --btn-hi: #465268; --btn-edge: #5d6a80; --focus: #ffd66b;
+}
+
+* { box-sizing: border-box; }
+
+/* ------------------------------------------------------------- text */
+.text { color: var(--fg); font-size: 16px; }
+.dim { color: var(--dim); font-size: 16px; }
+.small { color: var(--dim); font-size: 13.6px; }
+.h1 { color: var(--fg); font-size: 32px; font-weight: 700; }
+.h2 { color: var(--fg); font-size: 24px; font-weight: 700; }
+.h3 { color: var(--accent); font-size: 18.7px; font-weight: 700; }
+.countdown { color: var(--fg); font-size: 48px; font-weight: 700; text-align: center; }
+.rail-title { color: var(--accent); font-size: 13.6px; font-weight: 700; letter-spacing: 1.1px; text-transform: uppercase; }
+.objective { color: var(--fg); font-size: 16px; font-weight: 600; }
+.stat-k { color: var(--fg); font-size: 16px; }
+.stat-v { color: var(--fg); font-size: 16px; font-weight: 700; text-align: end; }
+.win { color: var(--accent); font-size: 16px; }
+.lose { color: var(--danger); font-size: 16px; }
+.win-h { color: var(--accent); font-size: 24px; font-weight: 700; }
+.lose-h { color: var(--danger); font-size: 24px; font-weight: 700; }
+.total { color: var(--fg); font-size: 18.4px; font-weight: 700; }
+.hint-text { color: var(--accent-ink); font-size: 16px; font-weight: 600; }
+.coach-step { color: var(--dim); font-size: 12px; letter-spacing: 1.3px; text-transform: uppercase; }
+.coach-h { color: var(--accent); font-size: 16.8px; font-weight: 700; }
+.coach-tip { color: var(--dim); font-size: 16px; }
+.card-h { color: var(--accent); font-size: 18.7px; font-weight: 700; }
+.badge-text { color: var(--accent); font-size: 12px; }
+.toast-text { color: var(--fg); font-size: 16px; }
+.mode-name { color: var(--fg); font-size: 16px; font-weight: 600; }
+.mode-name-on { color: var(--accent-ink); font-size: 16px; font-weight: 700; }
+.mode-desc { color: var(--dim); font-size: 13.6px; }
+.mode-desc-on { color: var(--accent-ink); font-size: 13.6px; }
+.wrap { color: var(--fg); font-size: 16px; font-weight: 600; text-align: center; }
+.wrap-ink { color: var(--accent-ink); font-size: 16px; font-weight: 700; text-align: center; }
+
+/* ------------------------------------------------------------- surfaces */
+.page { background: var(--bg); border-radius: 0; }
+.rail { background: var(--panel); border-radius: 0; padding: 12px 14px; }
+.tray { background: var(--panel); border-top: 1px solid var(--edge); border-radius: 0; padding: 8px; }
+.panel { background: var(--panel); border: 1px solid var(--edge); border-radius: 14px; padding: 22px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.6); }
+.coach { background: rgba(12, 16, 22, 0.94); border: 1px solid var(--accent); border-radius: 12px; padding: 12px 14px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6); }
+.coach-edge { background: var(--accent); border-radius: 3px; }
+.hint { background: var(--accent); border-radius: 8px; padding: 8px 10px; }
+.toast { background: var(--btn); border: 1px solid var(--btn-edge); border-radius: 10px; padding: 10px 16px; }
+.section { border: 1px solid var(--edge); border-radius: 10px; padding: 8px 12px; }
+.rule-card { background: var(--btn); border: 1px solid var(--btn-edge); border-radius: 10px; padding: 10px 14px; }
+.badge { background: var(--accent-ink); border-radius: 999px; padding: 1px 8px; }
+.stat { border-bottom: 1px solid var(--edge); border-radius: 0; padding: 0 0 6px 0; }
+.edge { background: var(--edge); border-radius: 0; }
+
+/* ------------------------------------------------------------- buttons */
+.btn {
+  min-height: 44px; min-width: 44px; padding: 10px 16px;
+  background: var(--btn); border: 2px solid var(--btn-edge); border-radius: 10px;
+  color: var(--fg); font-size: 16px; font-weight: 600; text-align: center;
+}
+.btn:hover { background: var(--btn-hi); border-color: var(--fg); }
+.btn:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.btn:disabled { opacity: 0.45; }
+.btn-primary {
+  min-height: 44px; min-width: 44px; padding: 10px 16px;
+  background: var(--accent); border: 2px solid var(--accent); border-radius: 10px;
+  color: var(--accent-ink); font-size: 16px; font-weight: 700; text-align: center;
+}
+.btn-primary:hover { background: #b2ffd3; border-color: #ffffff; }
+.btn-primary:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.btn-quiet {
+  min-height: 44px; min-width: 44px; padding: 10px 16px;
+  background: transparent; border: 2px solid var(--btn-edge); border-radius: 10px;
+  color: var(--fg); font-size: 16px; font-weight: 600; text-align: center;
+}
+.btn-quiet:hover { background: var(--btn-hi); border-color: var(--fg); }
+.btn-quiet:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.btn-danger {
+  min-height: 44px; min-width: 44px; padding: 10px 16px;
+  background: var(--danger); border: 2px solid var(--danger); border-radius: 10px;
+  color: var(--danger-ink); font-size: 16px; font-weight: 600; text-align: center;
+}
+.btn-danger:hover { border-color: #ffffff; }
+.btn-danger:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.btn-mode {
+  min-height: 44px; padding: 10px 16px;
+  background: var(--btn); border: 2px solid var(--btn-edge); border-radius: 10px;
+  color: var(--fg); font-size: 16px; font-weight: 600; text-align: start;
+}
+.btn-mode:hover { background: var(--btn-hi); border-color: var(--fg); }
+.btn-mode:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.btn-mode-on {
+  min-height: 44px; padding: 10px 16px;
+  background: var(--accent); border: 2px solid var(--accent); border-radius: 10px;
+  color: var(--accent-ink); font-size: 16px; font-weight: 700; text-align: start;
+}
+.btn-mode-on:hover { background: #b2ffd3; border-color: #ffffff; }
+.btn-mode-on:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.btn-pin {
+  min-height: 44px; padding: 10px 16px;
+  background: var(--btn); border: 2px solid #c9a227; border-radius: 10px;
+  color: var(--fg); font-size: 16px; font-weight: 600; text-align: center;
+}
+.btn-pin:hover { background: var(--btn-hi); border-color: var(--fg); }
+.btn-pin:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.btn-pin.active { background: var(--btn-hi); border-color: var(--accent); }
+.btn-stage {
+  min-height: 44px; min-width: 44px; padding: 10px 8px;
+  background: var(--btn); border: 2px solid var(--btn-edge); border-radius: 10px;
+  color: var(--fg); font-size: 16px; font-weight: 600; text-align: center;
+}
+.btn-stage:hover { background: var(--btn-hi); border-color: var(--fg); }
+.btn-stage:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.btn-stage-done {
+  min-height: 44px; min-width: 44px; padding: 10px 8px;
+  background: var(--btn); border: 2px solid var(--accent); border-radius: 10px;
+  color: var(--accent); font-size: 16px; font-weight: 600; text-align: center;
+}
+.btn-stage-done:hover { background: var(--btn-hi); border-color: var(--fg); }
+.btn-stage-done:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.legend { color: var(--accent); font-size: 16px; font-weight: 700; }
+.stage-bg { background: #000000; border-radius: 0; }

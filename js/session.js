@@ -217,14 +217,14 @@ export const DEFAULT_SETTINGS = {
 export function loadSettings(storage) {
   try {
     const raw = (storage || defaultStorage()).getItem('rescue-pins:settings');
-    if (!raw) return structuredClone(DEFAULT_SETTINGS);
+    if (!raw) return JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
     const doc = JSON.parse(raw);
-    if (doc.checksum !== hashString(stableStringify({ ...doc, checksum: undefined }))) return structuredClone(DEFAULT_SETTINGS);
+    if (doc.checksum !== hashString(stableStringify({ ...doc, checksum: undefined }))) return JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
     const { checksum, ...data } = doc;
-    return { ...structuredClone(DEFAULT_SETTINGS), ...data, audio: { ...DEFAULT_SETTINGS.audio, ...(data.audio || {}) },
+    return { ...JSON.parse(JSON.stringify(DEFAULT_SETTINGS)), ...data, audio: { ...DEFAULT_SETTINGS.audio, ...(data.audio || {}) },
              graphics: { ...DEFAULT_SETTINGS.graphics, ...(data.graphics || {}) },
              controls: { ...DEFAULT_SETTINGS.controls, ...(data.controls || {}) } };
-  } catch { return structuredClone(DEFAULT_SETTINGS); }
+  } catch { return JSON.parse(JSON.stringify(DEFAULT_SETTINGS)); }
 }
 
 export function saveSettings(settings, storage) {

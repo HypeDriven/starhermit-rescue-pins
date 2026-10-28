@@ -212,7 +212,7 @@ function resolveFlow(state, events) {
 // cmd: { id?: string, type: 'pull', pinId: string }
 // Returns { state, events, error }. Never mutates the input state.
 export function applyCommand(prev, cmd) {
-  const state = structuredClone(prev); // deep copy; input state never mutated
+  const state = JSON.parse(JSON.stringify(prev)); // deep copy (plain JSON data); input state never mutated
   const events = [];
   const why = explainIllegal(state, cmd);
   if (why) {

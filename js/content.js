@@ -4,6 +4,8 @@
 import { CONTENT_VERSION, makeStreams, mulberry32, solveLevel, createInitialState,
          applyCommand, hashState, legalActions } from './rules.js';
 
+import { JOURNEY } from './journey.js';
+
 export { CONTENT_VERSION };
 
 export const THEMES = [
@@ -245,12 +247,18 @@ function buildJourneyStage(i) {
   return best.level;
 }
 
+/** Runs the journey generator (≈1 s in V8, far longer in the engine's
+ * interpreter): tools/gen-levels.mjs writes its output to js/journey.js,
+ * which the game ships, and tests/content.test.js checks they agree. */
+export function generateJourney() {
+  const out = [];
+  for (let i = 0; i < 40; i++) out.push(buildJourneyStage(i));
+  return out;
+}
+
 let _journey = null;
 export function getJourney() {
-  if (!_journey) {
-    _journey = [];
-    for (let i = 0; i < 40; i++) _journey.push(buildJourneyStage(i));
-  }
+  if (!_journey) _journey = JSON.parse(JSON.stringify(JOURNEY));
   return _journey;
 }
 
@@ -372,4 +380,10 @@ export function findLevel(id) {
     return getDailyLevel(parseInt(id.slice(6), 10));
   }
   return null;
+}
+
+/** The Daily's theme without generating it (getDailyLevel's tier is its rng's first draw). */
+export function dailyTheme(daySeed) {
+  const rng = mulberry32(((daySeed >>> 0) ^ 0x27d4eb2f) >>> 0);
+  return THEMES[Math.floor(rng() * 5)].id;
 }
