@@ -23,8 +23,8 @@ async function withServer(fn) {
 
 test('static files served with correct MIME', async () => {
   await withServer(async (base) => {
-    for (const [path, mime] of [['/', 'text/html'], ['/js/main.js', 'text/javascript'],
-                                ['/js/three.min.js', 'text/javascript'], ['/starhermit.txt', 'text/plain']]) {
+    for (const [path, mime] of [['/', 'text/html'], ['/js/rules.js', 'text/javascript'],
+                                ['/starhermit.txt', 'text/plain']]) {
       const res = await fetch(base + path);
       assert.equal(res.status, 200, path);
       assert.ok(res.headers.get('content-type').startsWith(mime), path + ' mime');

@@ -89,3 +89,16 @@ test('solver node budget respected (no unbounded search)', () => {
   solveLevel(lvl, 5000);
   assert.ok(Date.now() - t0 < 10000);
 });
+
+test('the shipped journey table (js/journey.js) is what the generator builds', async () => {
+  const { generateJourney } = await import('../js/content.js');
+  assert.deepEqual(getJourney(), JSON.parse(JSON.stringify(generateJourney())));
+});
+
+test('dailyTheme matches the generated Daily without generating it', async () => {
+  const { dailyTheme } = await import('../js/content.js');
+  for (let d = 20300; d < 20330; d++) {
+    const lv = getDailyLevel(d);
+    if (!lv.excluded) assert.equal(dailyTheme(d), lv.theme, 'day ' + d);
+  }
+});
