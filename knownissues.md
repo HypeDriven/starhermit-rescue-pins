@@ -1,5 +1,14 @@
 # Known Issues / Fix Log
 
+## StarHermit engine port (2026-10-28)
+
+- Ported to the engine 1.20.0 (minor 20); the browser client is removed (recoverable from 19214f4). See spec.md §0.
+- The pin target rectangle follows the selected pin's lift (it was computed from the resting position at first, so a
+  press on the lifted pin missed it).
+- Low's glass opacity is the composer's 0.018: the engine blends in linear light, where the old 0.12 turned the
+  chamber interiors grey.
+- Guests' old localStorage progress and saved game cannot migrate (cloud saves do).
+
 ## Spec-gap pass: achievements, daily comparison, mastery track (2026-09-09)
 
 - **No achievement system** despite spec §6 requiring "a small static
