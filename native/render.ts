@@ -237,7 +237,9 @@ export function build(state: State | null, def: LevelDef, theme: Theme | null): 
     map.needsUpdate = true;
     return track(surface({ color: themeDef.stone, roughness: 0.88, map, bumpMap: map, bumpScale: 1.4, envMapIntensity: 0.06 }));
   };
-  glassMat = track(surface({ color: palette.glass, transparent: true, opacity: look.post ? 0.018 : 0.12, roughness: 0.06,
+  glassMat = track(surface({ color: palette.glass, transparent: true, // render.js: 0.018 under the composer, 0.12 without (blended in display space there); the engine blends in
+    // linear light on every tier, where 0.12 washes the dark interiors grey, so Low keeps the composer's value
+    opacity: 0.018, roughness: 0.06,
     metalness: 0, envMapIntensity: 0.15, depthWrite: false }, true));
   // dark chamber interior: liquids, villagers and pins read against it, and the pale stone frame reads against it
   const interiorMat = track(surface({ color: new Color(themeDef.sky).multiplyScalar(0.9), roughness: 1, envMapIntensity: 0.03 }));

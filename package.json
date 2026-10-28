@@ -1,16 +1,20 @@
 {
   "name": "rescue-pins",
   "version": "1.0.0",
-  "description": "Rescue Pins \u2014 sequencing puzzle (browser + Node ESM)",
+  "description": "Rescue Pins — pull the pins in the right order to rescue the villagers. A sequencing puzzle on the StarHermit engine.",
   "type": "module",
-  "scripts": {
-    "test": "node --test tests/*.test.js",
-    "test:e2e": "node tests/e2e.mjs",
-    "start": "node server.js"
-  },
+  "private": true,
   "license": "PolyForm-Noncommercial-1.0.0",
-  "dependencies": {
-    "three": "^0.185.1"
+  "scripts": {
+    "test": "npm run test:unit && npm run test:native",
+    "test:unit": "node --test tests/rules.test.js tests/content.test.js tests/session.test.js tests/achievements.test.js tests/server.test.js tests/progress.test.mjs tests/i18n.test.mjs",
+    "test:native": "node tests/native.mjs",
+    "test:browser": "node tools/browser-play.mjs .",
+    "start": "node server.js",
+    "package": "node tools/package-web.mjs",
+    "css": "node tools/css.mjs",
+    "levels": "node tools/gen-levels.mjs",
+    "plays": "node tools/gen-plays.mjs"
   },
   "devDependencies": {
     "playwright-core": "^1.62.1"
