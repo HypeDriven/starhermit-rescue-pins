@@ -14,8 +14,7 @@
 // snapped every chamber to the state; no flow animation).
 //
 // From three.js r185 (physically based lights): colours as written, the
-// punctual and hemisphere lights' intensities ÷ π (the engine takes three's
-// legacy units). render.js's RoomEnvironment() without a renderer is r185's
+// punctual and hemisphere lights' intensities as written (engine.minor 23+). render.js's RoomEnvironment() without a renderer is r185's
 // 900-candela room, so the port passes the renderer and lowers the room by
 // 3.5 (engine spec, Porting environments); every lit material carries it as
 // its own envMap at its envMapIntensity, as render.js did. The old composer
@@ -125,13 +124,13 @@ const camera = new OrthographicCamera(-1, 1, 1, -1, 0.1, 100);
 const raycaster = new Raycaster();
 const ndc = new Vector2();
 
-// one dominant key (shadow caster) + soft sky/ground fill (r185 intensities ÷ π)
-const key = new DirectionalLight(0xfff2dd, (2.8 * LIGHT) / Math.PI);
+// one dominant key (shadow caster) + soft sky/ground fill (r185 intensities)
+const key = new DirectionalLight(0xfff2dd, 2.8 * LIGHT);
 key.position.set(5, 11, 9);
 key.shadow.bias = -0.0004;
-key.shadow.normalBias = 1; // three's 0.02 world units; the engine's normal bias is in texels
+key.shadow.normalBias = 0.02;
 key.shadow.radius = 3;
-const fill = new HemisphereLight(0xcfe0ff, 0x4a4036, (1.2 * LIGHT) / Math.PI);
+const fill = new HemisphereLight(0xcfe0ff, 0x4a4036, 1.2 * LIGHT);
 scene.add(key, key.target, fill);
 
 // layers: environment, gameplay, interaction (pins: picking), effects
@@ -372,7 +371,7 @@ function addTorch(x: number, y: number): void {
   const flameMat = track(new MeshBasicMaterial({ color: new Color(0xffb04a).multiplyScalar(2.2) }));
   const flame = new Mesh(track(new ConeGeometry(0.12, 0.34, 10)), flameMat);
   flame.position.set(x, y + 0.36, 1.3);
-  const light = new PointLight(0xffa24a, (3 * LIGHT) / Math.PI, 7, 1.6);
+  const light = new PointLight(0xffa24a, 3 * LIGHT, 7, 1.6);
   light.position.set(x, y + 0.5, 1.8);
   envGroup.add(bracket, flame, light);
   torches.push({ flame, light, phase: x });
@@ -425,7 +424,12 @@ function applyMaterialQuality(): void {
   key.castShadow = sm > 0;
   if (sm > 0) key.shadow.mapSize = sm;
   // the key's shadow covers the castle (render.js fitShadow: half the larger side + 2.5 around the centre)
-  if (level) key.shadow.distance = FRAMING.camDist + Math.max(level.def.cols * FRAMING.cellW, level.def.rows * FRAMING.cellH) / 2 + 2.5;
+  if (level) {
+    const ext = Math.max(level.def.cols * FRAMING.cellW, level.def.rows * FRAMING.cellH) / 2 + 2.5;
+    const sc = key.shadow.camera as OrthographicCamera;
+    sc.left = -ext; sc.right = ext; sc.top = ext; sc.bottom = -ext; sc.near = 1; sc.far = 40;
+    sc.updateProjectionMatrix();
+  }
   scene.traverse((o: Object3D) => {
     const mat = (o as Mesh).material as Material | Material[] | undefined;
     if (!mat) return;
