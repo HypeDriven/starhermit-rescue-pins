@@ -3,7 +3,7 @@
     "assets/ui-style.json": {"sha256": "249a78b39b883b553f6551f9f449d906c02b9dd21d5671d437623b95be651e0c", "size": 13236},
     "cover.jpg": {"sha256": "a7b8e5ed2be6974b20e1a1b31f0876743541451ed2239c7b0e76781e2a0a9c6c", "size": 263670},
     "icon.png": {"sha256": "d5ef92c37e2b5824a52aa02ce3704c5f4e86758a8358410d3244cb9ff89a1767", "size": 7114},
-    "index.html": {"sha256": "28965a32b04ee8f4a1e383b8f185ec88a6d4cdafb29bffbbb56a5cca5eca6714", "size": 1758},
+    "index.html": {"sha256": "d3ef95e4196e17df01b01047ebc008d0f5b20c5a01ee865b094e9a86ca143309", "size": 1758},
     "js/achievements.js": {"sha256": "e889343f93c4107ba6ce809dcd2efd4f1d6fe38d10a370c7c2846b3fa87a20fb", "size": 2415},
     "js/content.js": {"sha256": "f99fc772576f3d4672606f741f065ca6d87ecef0df574438c02a11f2b604b56e", "size": 16747},
     "js/journey.js": {"sha256": "27343bb059eb0a215e4873df583af1dd698f689f5183b142af0b2f74a2f4b382", "size": 20737},
@@ -38,7 +38,7 @@
     "sfx/villager-cheer.opus": {"sha256": "585d1e8d8b387f239820beffafc2a2aacef16eea124fd76738f32c99fc636506", "size": 34561},
     "sfx/water-rush.opus": {"sha256": "f2dfa636dc69c27d9c3bd93fde49266b60383e66d9e242d909f4ea5b9dbc9639", "size": 22661},
     "sfx/water-splash.opus": {"sha256": "0c73208ef8d5304de8f3ffc6b8e6d7e4dfd276df9a05bb473cf391c1a7e003e8", "size": 14659},
-    "starhermit.txt": {"sha256": "27ee8d8085fcd2ca58d29beb9fe602b1de63231ff147228d9f0b0998809718e5", "size": 1877}
+    "starhermit.txt": {"sha256": "278eda76b884faf52f49a68e5a9815264fb0eabab49fc31a7116048ce3ae8f89", "size": 1877}
   },
   "excluded": ["LICENSE.md", "coverart.png", "data/", "knownissues.md", "node_modules/", "package-lock.json", "package.json", "server.js", "sfx/manifest.json", "sfx/manifest.md", "spec.md", "tests/", "tools/", "tsconfig.json"],
   "format": 1
