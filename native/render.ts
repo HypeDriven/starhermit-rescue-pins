@@ -457,8 +457,10 @@ export function applyLook(next: Look): void {
   // GradeShader on the composer's linear buffer: a 0.22 S-curve, saturation 1.1, cool shadows / warm highlights by
   // a smoothstep of luma from 0.2 to 0.8, a 0.24 vignette from 0.35 to 0.85.
   renderer.grade = next.grade ? {
-    space: "linear", contrast: 0.22, saturation: 1.1, split: [0.2, 0.8], shadows: [0.95, 0.98, 1.06], highlights: [1.05, 1.0, 0.94],
+    space: "linear", contrastCurve: "s", contrast: 0.22, saturation: 1.1, split: [0.2, 0.8], shadows: [0.95, 0.98, 1.06], highlights: [1.05, 1.0, 0.94],
     vignette: { amount: 0.24, inner: 0.35, outer: 0.85 },
+    levels: [0.97, 0.02], // s * 0.97 + 0.02
+    overRange: "keep", // minor 29: mix(c, s + max(c - 1, 0), amount) as the page's grade
   } : null;
   renderer.antialias = next.antialias;
   const rebuild = !prev || prev.detailed !== next.detailed || particleCount(prev) !== particleCount(next) || prev.post !== next.post ||
