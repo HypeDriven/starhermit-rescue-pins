@@ -1,0 +1,12 @@
+# Graphics-level bench (tools/gen-plays.mjs; generated: do not edit): Journey stage 2 in play, 600 frames measured.
+until 600 Daily Challenge
+frames 10
+click =Journey
+until 300 ☆ 2
+frames 10
+click Emerald Keep 2 —
+until 300 Pins you can pull
+frames 120
+measure start
+frames 600
+measure stop

@@ -16,8 +16,8 @@
 // the toasts run on a clock advanced 1/60 s per fixed step, so slow frames
 // never change a round and play scripts replay exactly. The hint's search and
 // the Daily's generation run on a script worker (native/solve.ts).
-import { clipboard, frame, onFixedUpdate, onPreferencesChange, onRender, onResume, onStart, onSuspend, onUpdate, preferences, setFixedRate } from "starhermit:engine";
-import { onAction, onPointerButton, onPointerMove, onTouch, primaryPointer } from "starhermit:input";
+import { afterRender, levelSettings, clipboard, frame, onFixedUpdate, onPreferencesChange, onRender, onResume, onStart, onSuspend, onUpdate, preferences, setFixedRate } from "starhermit:engine";
+import { onAction, onGesture, onPointerMove, onTouch, primaryPointer } from "starhermit:input";
 import * as ui from "starhermit:ui";
 import { onSessionEnded, requestSignIn } from "starhermit:platform";
 import { Achievements, Content, createSession, type Achievement, type LevelDef, type Lesson, type Score, type Session, type Terminal } from "./game.ts";
@@ -56,7 +56,6 @@ export const app = {
   preparing: false,
   results: null as Results | null,
   helpReturn: "title" as "title" | "pause",
-  toasts: [] as { text: string; until: number }[],
   journey: [] as LevelDef[],
 };
 let clockMs = 0;
@@ -80,8 +79,7 @@ function flushAnnouncements(): void {
   spokenAssertive = false;
 }
 export function toast(text: string): void {
-  app.toasts.push({ text, until: now() + 3.2 });
-  if (app.toasts.length > 3) app.toasts.shift();
+  ui.toast!(text, { duration: 3.2, style: "toast", dismissible: false, position: app.overlay ? "top" : "bottom" });
 }
 const CAPTIONS: Record<audio.Sfx, string> = {
   ack: N("click"), pull: N("pin pulled"), flow: N("liquid flowing"), neutralize: N("steam hiss"),
@@ -92,9 +90,6 @@ export function sound(ev: audio.Sfx): void {
   audio.play(ev);
   if (platform.options.captions && ev !== "ack") announce(T(CAPTIONS[ev]));
 }
-const pending: (() => void)[] = [];
-/** A widget's press, run once the frame's UI is built (state changes mid-build would break later widgets). */
-export function later(fn: () => void): void { pending.push(fn); }
 export function themeOf(level: LevelDef): (typeof Content.THEMES)[number] { return Content.THEMES.find((t) => t.id === level.theme) || Content.THEMES[0]!; }
 export const screen = (): string => app.session?.session.screen ?? "title";
 export const playing = (): boolean => !!app.session && app.session.session.screen === "active" && app.overlay === null;
@@ -154,7 +149,7 @@ export function startDaily(): void {
   });
 }
 export function startLevel(level: LevelDef, mode: string, lesson?: Lesson | null): void {
-  if (level.excluded) { toast(T("This day is excluded from ranking (defective content).")); announce(T("This day is excluded from ranking (defective content)."), true); showTitle(); return; }
+  if (level.excluded) { toast(T("This day is excluded from ranking (defective content).")); showTitle(); return; }
   const s = createSession({ storage: platform.deviceKV, level, mode: mode || "journey", practice: mode === "practice" || mode === "tutorial", now: Math.round(platform.nowMs()) });
   app.session = s;
   s.transition("preparing", "level-selected");
@@ -232,7 +227,7 @@ export function coach(): Coach | null {
   if (!prog.coachDone) {
     if (st.stats.moves === 0) step = app.selectedPin && legal.length ? "pull" : "select";
     else if (st.stats.moves === 1) step = "flow";
-    else { prog.coachDone = true; later(() => platform.persist()); }
+    else { prog.coachDone = true; afterRender(() => platform.persist()); }
   }
   if (!step && !isTutorial) return null;
   const stepIdx = { select: 1, pull: 2, flow: 3 }[step ?? "select"] ?? 1;
@@ -358,7 +353,7 @@ export function continueSaved(): void {
   try { doc = JSON.parse(platform.deviceKV.getItem(LAST) || "null") as { levelId?: string; mode?: string } | null; } catch { doc = null; }
   const id = doc?.levelId ?? "";
   const resume = (lv: LevelDef | null): void => {
-    if (!lv || !doc) { toast(T("No saved game to continue.")); announce(T("No saved game to continue."), true); return; }
+    if (!lv || !doc) { toast(T("No saved game to continue.")); return; }
     const s = createSession({ storage: platform.deviceKV, level: lv, mode: doc.mode || "journey", now: Math.round(platform.nowMs()) });
     if (!s.loadSnapshot(LAST, () => lv)) {
       toast(T("Saved game was corrupted and could not be restored."));
@@ -455,14 +450,14 @@ export function reasonText(reason: string | null): string { return reason && REA
 export function resultsLbLine(): string | null {
   const lb = app.results?.lb;
   if (!lb) return null;
-  if (lb === "posting") return S("lbPosting");
-  return !lb.posted ? S("lbNotPosted") : lb.rank ? S("lbRank", { rank: lb.rank }) : S("lbPosted");
+  if (lb === "posting") return S("leaderboardPosting");
+  return !lb.posted ? S("leaderboardNotPosted") : lb.rank ? S("leaderboardRank", { rank: lb.rank }) : S("leaderboardPosted");
 }
 export function signIn(): void { void requestSignIn().catch(() => undefined); }
 export function invite(): void {
   const link = platform.inviteLink();
   if (!link) return;
-  try { clipboard.writeText(link); toast(S("inviteCopied")); } catch { toast(S("inviteLink", { url: link })); }
+  try { clipboard.writeText(link); toast(S("inviteCopied")); } catch { toast(S("inviteLink", { link })); }
 }
 export function replayTutorial(): void { startMode("learn"); }
 
@@ -473,16 +468,16 @@ onAction((e) => {
   const s = app.session;
   if (app.overlay) {
     if (a !== "pause" || !fresh()) return;
-    if (app.overlay === "pause") later(resume);
-    else if (app.overlay === "help") later(backFromHelp);
-    else if (app.overlay === "settings" || app.overlay === "modes" || app.overlay === "journey" || app.overlay === "progression") later(showTitle);
+    if (app.overlay === "pause") afterRender(resume);
+    else if (app.overlay === "help") afterRender(backFromHelp);
+    else if (app.overlay === "settings" || app.overlay === "modes" || app.overlay === "journey" || app.overlay === "progression") afterRender(showTitle);
     return;
   }
   if (!s || s.session.screen !== "active") return;
   switch (a) {
-    case "pause": later(pause); return;
-    case "undo": later(undo); return;
-    case "hint": later(hint); return;
+    case "pause": afterRender(pause); return;
+    case "undo": afterRender(undo); return;
+    case "hint": afterRender(hint); return;
     case "camera": render.reframe(); sound("ack"); return;
   }
   if (ui.focused() !== null && (a === "pull" || a === "prev" || a === "next")) {
@@ -492,37 +487,18 @@ onAction((e) => {
   }
   if (a === "prev") movePin(-1);
   else if (a === "next") movePin(1);
-  else if (a === "pull" && app.selectedPin) { const id = app.selectedPin; later(() => pullPin(id)); }
+  else if (a === "pull" && app.selectedPin) { const id = app.selectedPin; afterRender(() => pullPin(id)); }
 });
 
 // ------------------------------------------------------------------ pointer and touch on the castle (main.js wirePointer)
 /** The castle's view rectangle (the old canvas) in window pixels, set by screens.ts. */
 export const view: render.Rect = { x: 0, y: 0, width: 0, height: 0 };
 const inView = (x: number, y: number): boolean => x >= view.x && y >= view.y && x <= view.x + view.width && y <= view.y + view.height;
-let downAt: { x: number; y: number; t: number } | null = null;
 const taps: { x: number; y: number }[] = [];
 let hover: { x: number; y: number } | null = null;
 let lastTouch = -1e9;
-function release(x: number, y: number): void {
-  if (!downAt) return;
-  const dist = Math.hypot(x - downAt.x, y - downAt.y) / frame().scale;
-  const dt = now() - downAt.t;
-  downAt = null;
-  if (dist > 12 || dt > 0.6) return; // drag / long press, not a tap
-  taps.push({ x, y });
-}
-onTouch((e) => {
-  lastTouch = now();
-  if (e.control || !e.primary) return;
-  if (e.phase === "start") downAt = inView(e.x, e.y) ? { x: e.x, y: e.y, t: now() } : null;
-  else if (e.phase === "end") release(e.x, e.y);
-  else if (e.phase === "cancel") downAt = null;
-});
-onPointerButton((e) => {
-  if (e.button !== 0 || now() - lastTouch < 0.6) return;
-  if (e.pressed) downAt = inView(e.x, e.y) ? { x: e.x, y: e.y, t: now() } : null;
-  else release(e.x, e.y);
-});
+onTouch(() => { lastTouch = now(); });
+onGesture!((e) => { if (e.type === "tap" && inView(e.startX, e.startY)) taps.push({ x: e.x, y: e.y }); });
 onPointerMove((x, y) => { if (now() - lastTouch >= 0.6) hover = { x, y }; });
 /** Taps on the castle: a tap on the selected pin pulls it, on another pin selects it; hovering selects (legal-target preview). */
 function pointerInput(wasPlaying: boolean): void {
@@ -557,10 +533,9 @@ onFixedUpdate(() => {
 let lookKey = "";
 function applyLook(): void {
   const f = frame();
-  const k = `${f.quality}:${f.levelIndex}`;
-  if (k === lookKey) return;
-  lookKey = k;
-  render.applyLook(lookFor(f.quality, f.levelIndex));
+  if (f.level === lookKey) return;
+  lookKey = f.level;
+  render.applyLook(lookFor(levelSettings(f.level)));
 }
 /** The title backdrop: the first journey castle with both lava and water, untouched (main.js showcase). */
 function showcase(): void {
@@ -603,13 +578,10 @@ onUpdate((dt) => {
   applyLook();
   applyTokens(ui.preferences().highContrast);
   audio.update();
-  const t = now();
-  app.toasts = app.toasts.filter((x) => x.until >= t);
 });
 onRender(() => {
   const wasPlaying = playing();
   drawScreens();
-  for (const fn of pending.splice(0)) fn();
   pointerInput(wasPlaying);
   const f = frame();
   render.update(frameDt, f.width, f.height, view);

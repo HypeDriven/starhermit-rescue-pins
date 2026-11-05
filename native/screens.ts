@@ -12,7 +12,7 @@
 // three columns), short landscape (≤ 480 px tall: narrow rails either side)
 // and compact (the rails above and below the castle). The castle view's
 // rectangle goes to main.ts (view → render.ts).
-import { frame, openMenu } from "starhermit:engine";
+import { afterRender, frame, openMenu } from "starhermit:engine";
 import { bindings, requestRebind } from "starhermit:input";
 import * as draw from "starhermit:draw";
 import * as ui from "starhermit:ui";
@@ -21,7 +21,7 @@ import { N, S, T, levelLabel } from "./i18n.ts";
 import * as platform from "./platform.ts";
 import * as render from "./render.ts";
 import {
-  app, backFromHelp, coach, continueSaved, dismissCoach, fresh, hasSavedGame, hint, invite, later, levelTitle, next, objectiveText,
+  app, backFromHelp, coach, continueSaved, dismissCoach, fresh, hasSavedGame, hint, invite, levelTitle, next, objectiveText,
   pause, pullPin, quitToTitle, reasonText, replayTutorial, resultsLbLine, resume, retry, showHelp, showJourney, showModes,
   showProgression, showSettings, showTitle, signIn, sound, startDaily, startMode, startPicked, undo, view, themeOf,
 } from "./main.ts";
@@ -29,10 +29,8 @@ import {
 // ------------------------------------------------------------------ layout
 interface Layout { lw: number; lh: number; sc: number; wide: boolean; land: boolean }
 function layoutNow(): Layout {
-  const f = frame();
-  const sc = ui.preferences().scale;
-  const sa = f.safeArea;
-  const lw = Math.max(1, (f.width - sa.left - sa.right) / sc), lh = Math.max(1, (f.height - sa.top - sa.bottom) / sc);
+  const v = ui.viewport!();
+  const lw = Math.max(1, v.width), lh = Math.max(1, v.height), sc = v.scale;
   const land = lw > lh && lh <= 480;
   return { lw, lh, sc, wide: lw >= 1024 && !land, land };
 }
@@ -68,25 +66,14 @@ function button(b: Btn): void {
   if (b.width != null) s.width = b.width;
   if (b.height != null) s.height = b.height;
   if (ui.style(style, s).id(b.id).button(b.name ?? b.text, opts) && fresh()) {
-    later(() => { sound("ack"); b.act(); });
+    afterRender(() => { sound("ack"); b.act(); });
   }
 }
 /** Buttons at their own widths in rows that wrap at `width` (flex-wrap). */
 function flow(label: string, list: Btn[], width: number, gap = 8, justify: "start" | "center" = "start"): void {
-  const rows: Btn[][] = [[]];
-  let used = 0;
-  const bw = (b: Btn): number => Math.min(width, b.width ?? buttonWidth(b.text, b.style ?? "btn"));
-  for (const b of list) {
-    const w = bw(b);
-    if (rows[rows.length - 1]!.length && used + gap + w > width) { rows.push([]); used = 0; }
-    used += (rows[rows.length - 1]!.length ? gap : 0) + w;
-    rows[rows.length - 1]!.push(b);
-  }
-  ui.column(label, () => {
-    rows.forEach((row, ri) => ui.row(`${label}-r${ri}`, () => {
-      for (const b of row) button({ ...b, width: bw(b) });
-    }, { spacing: gap, width, justify, align: "center" }));
-  }, { spacing: gap, width });
+  ui.row(label, () => {
+    for (const b of list) button({ ...b, width: Math.min(width, b.width ?? buttonWidth(b.text, b.style ?? "btn")) });
+  }, { wrap: true, width, gap, justify, align: "center" });
 }
 function toWindow(x: number, y: number, w: number, h: number): ui.Rect {
   const sc = ui.preferences().scale, sa = frame().safeArea;
@@ -104,7 +91,6 @@ export function drawScreens(): void {
   const f = frame();
   shell(L);
   overlay(L);
-  toasts(L);
   if (app.focusNext) {
     const age = f.frame - app.openedFrame;
     if (age >= 1) ui.setFocus(app.focusNext);
@@ -277,18 +263,6 @@ function pinTargets(): void {
   ui.target(`${T("Board state")}: ${lines.join(" ")}`, { x: view.x, y: view.y, width: 1, height: 1 }, { role: "label" });
 }
 
-// ------------------------------------------------------------------ toasts
-function toasts(L: Layout): void {
-  if (!app.toasts.length) return;
-  const w = Math.min(L.lw - 32, 480);
-  const where = app.overlay ? { anchor: "top" as const, y: 8 } : { anchor: "bottom" as const, y: 16 };
-  ui.place("toast-stack", where, () => {
-    ui.column("toast-col", () => {
-      app.toasts.forEach((t, i) => ui.column(`toast-${i}`, () => para(t.text, w - 34, "toast-text", `toast-${i}-text`), { style: "toast" }));
-    }, { spacing: 6, align: "center" });
-  });
-}
-
 // ------------------------------------------------------------------ overlay panels (.rp-overlay > .rp-panel)
 function overlay(L: Layout): void {
   const o = app.overlay;
@@ -311,9 +285,9 @@ function overlay(L: Layout): void {
   });
   if (!isOpen && fresh()) {
     // Escape / the backdrop: the pause panel resumes, menus go back to the title
-    if (o === "pause") later(resume);
-    else if (o === "help") later(backFromHelp);
-    else if (o === "modes" || o === "journey" || o === "progression" || o === "settings") later(showTitle);
+    if (o === "pause") afterRender(resume);
+    else if (o === "help") afterRender(backFromHelp);
+    else if (o === "modes" || o === "journey" || o === "progression" || o === "settings") afterRender(showTitle);
   }
 }
 function panelLabel(o: Overlay): string {
@@ -502,7 +476,7 @@ function settingsSections(w: number, inGame: boolean): void {
       para(T("Palette"), iw * 0.4, "text", "set-palette-label");
       ui.spacer();
       const pick = ui.id("set-palette").select(T("Palette"), idx, names.map((n) => T(n)), { width: Math.min(iw * 0.58, 220) } as ui.WidgetOptions);
-      if (pick !== idx) later(() => platform.setOption("palette", ProgressModel.PALETTES[pick] as typeof o.palette));
+      if (pick !== idx) afterRender(() => platform.setOption("palette", ProgressModel.PALETTES[pick] as typeof o.palette));
     }, { width: iw, align: "center", height: 48 });
   });
   section("set-controls", T("Controls"), (iw) => {
@@ -532,7 +506,7 @@ function toggleRow(id: string, label: string, on: boolean, w: number, set: (v: b
         if (on) draw.text("✓", bx + box / 2, by + 1 * s, { size: 17 * s, color: "#0c2418", align: "center", weight: "bold" });
       },
     });
-    if (res.activated && fresh()) later(() => set(!on));
+    if (res.activated && fresh()) afterRender(() => set(!on));
   }, { width: w, align: "center", spacing: 8, height: 44 });
 }
 function settingsPanel(w: number): void {

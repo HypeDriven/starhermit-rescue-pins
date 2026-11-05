@@ -24,6 +24,7 @@
 // The old canvas sat between the rails: the camera spans the window and its
 // frustum is offset so the castle is framed in that rectangle.
 import {
+  ParticleEmitter,
   ACESFilmicToneMapping, AdditiveBlending, BoxGeometry, BufferAttribute, BufferGeometry, CanvasTexture, CapsuleGeometry, Color,
   ConeGeometry, CylinderGeometry, DirectionalLight, EdgesGeometry, Fog, Group, HemisphereLight, LineBasicMaterial, LineSegments, Mesh,
   MeshBasicMaterial, MeshLambertMaterial, MeshPhysicalMaterial, MeshStandardMaterial, OrthographicCamera, PMREMGenerator, PointLight,
@@ -150,8 +151,7 @@ let glassMat: Material | null = null;
 let lavaMat: MeshStandardMaterial | MeshLambertMaterial | null = null;
 let lavaTex: CanvasTexture | null = null;
 let torches: Torch[] = [];
-let dust: Points | null = null, embers: Points | null = null;
-let dustSeed: Float32Array = new Float32Array(0), dustW = 1;
+let dust: ParticleEmitter | null = null, embers: Points | null = null;
 let ember = { life: new Float32Array(0), cell: new Int32Array(0), jitter: new Float32Array(0), rnd: rng(11) };
 let selectionMarker: Mesh | null = null;
 let selectedPinId: string | null = null;
@@ -210,6 +210,7 @@ export function build(state: State | null, def: LevelDef, theme: Theme | null): 
   envGroup.clear(); gameplayGroup.clear(); interactionGroup.clear(); fxGroup.clear();
   if (selectionMarker) scene.remove(selectionMarker);
   pinGroups = new Map(); cellViews = new Map(); pinMats = []; torches = [];
+  dust?.dispose(); // a group clear does not free an emitter
   dust = null; embers = null;
   level = { def, theme, lastState: state };
   selectedPinId = null;
@@ -382,19 +383,15 @@ function buildParticles(W: number, H: number): void {
   if (!n) return;
   const dot = track(srgbTexture(dotCanvas()));
   const r = rng(11);
-  // dust motes drifting in the light across the whole castle
+  // dust motes drifting in the light across the whole castle (a wide life, so the first burst doesn't die together)
   {
-    const pos = new Float32Array(n * 3);
-    for (let i = 0; i < n; i++) {
-      pos[i * 3] = (r() - 0.5) * (W + 3); pos[i * 3 + 1] = (r() - 0.5) * (H + 3); pos[i * 3 + 2] = 1.2 + r() * 1.5;
-    }
-    const geo = track(new BufferGeometry());
-    geo.setAttribute("position", new BufferAttribute(pos, 3));
     const mat = track(new PointsMaterial({ size: 0.09, map: dot, color: 0xfff1d0, transparent: true, opacity: 0.5,
       depthWrite: false, blending: AdditiveBlending, sizeAttenuation: true }));
-    dust = new Points(geo, mat);
-    dustW = W + 3;
-    dustSeed = new Float32Array(n).map(() => r() * 6.28);
+    dust = new ParticleEmitter({ capacity: n, material: mat, seed: 11, space: "local", shape: "box", extent: [(W + 3) / 2, (H + 3) / 2, 0.75],
+      velocity: [0.12, 0, 0], velocitySpread: [0, 0.05, 0], life: [10, 40], rate: n / 25 });
+    dust.position.z = 1.95;
+    dust.frustumCulled = false;
+    dust.burst(n);
     fxGroup.add(dust);
   }
   // embers rising from lava chambers
@@ -447,12 +444,13 @@ export function applyLook(next: Look): void {
   renderer.toneMapping = ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.05 / LIGHT;
   // UnrealBloomPass(0.5, 0.45, 0.9): only lava, torch flames, embers and the selection glow bloom.
-  renderer.bloom = next.bloom ? { strength: 0.5, radius: 0.45, threshold: 0.9, resolution: next.budget.bloomRes } : null;
+  renderer.bloom = next.bloom === null ? null : { strength: 0.5, radius: 0.45, threshold: 0.9, resolution: next.bloom };
   // GTAO radius 0.6, distance exponent 1.5, thickness 1, 16 / 8 samples and the denoise per tier; blend 0.75.
-  renderer.ao = next.ao === "off" ? null : {
+  const ao = next.ao, full = !!ao && ao.resolution >= 1; // the engine's AO quality: resolution < 1 = "on", ≥ 1 = "high"
+  renderer.ao = ao && {
     blendIntensity: 0.75, radius: 0.6, distanceExponent: 1.5, thickness: 1.0, scale: 1,
-    samples: next.ao === "high" ? 16 : 8, resolution: next.budget.aoRes,
-    denoise: { lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: next.ao === "high" ? 6 : 4, rings: 2, samples: next.ao === "high" ? 16 : 8, radiusExponent: 2 },
+    samples: ao.samples, resolution: ao.resolution,
+    denoise: { lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: full ? 6 : 4, rings: 2, samples: ao.denoiseSamples, radiusExponent: 2 },
   };
   // GradeShader on the composer's linear buffer: a 0.22 S-curve, saturation 1.1, cool shadows / warm highlights by
   // a smoothstep of luma from 0.2 to 0.8, a 0.24 vignette from 0.35 to 0.85.
@@ -602,16 +600,6 @@ function animate(t: number, dt: number): void {
     const f = 0.85 + 0.15 * Math.sin(t * 13 + tc.phase) * Math.sin(t * 7.3 + tc.phase * 2);
     tc.flame.scale.set(1, f * 1.1, 1);
     tc.light.intensity = ((3 * LIGHT) / Math.PI) * f;
-  }
-  if (dust) {
-    const p = dust.geometry.attributes.position as BufferAttribute;
-    for (let i = 0; i < p.count; i++) {
-      let x = p.getX(i) + dt * 0.12;
-      const y = p.getY(i) + Math.sin(t * 0.6 + dustSeed[i]!) * dt * 0.08;
-      if (x > dustW / 2) x -= dustW;
-      p.setXY(i, x, y);
-    }
-    p.needsUpdate = true;
   }
   if (embers && level) {
     const lavaCells: CellView[] = [];

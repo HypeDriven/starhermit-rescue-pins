@@ -1,34 +1,25 @@
-// Localization: the browser build's tables (js/strings.js, English text as
-// the keys, the nine StarHermit locales; the account strings in
-// js/sh-i18n.js) in the interface language the runtime reports
-// (preferences().language: the player's choice in Options › Language, else
-// the account's preferred language or the device's). The runtime's Options
-// replace the game's own Language setting (sh-language.js) and the DOM
-// re-labelling: every string is drawn through T() each frame, so a change
-// shows on the next frame and never restarts the stage.
-import { onPreferencesChange, preferences } from "starhermit:engine";
+// Localization: assets/strings.json (generated from the browser build's tables,
+// English text as the keys; en-GB, es-ES and fr-CA list only their differences)
+// on the engine's strings, which follow the interface language the runtime
+// reports (the player's choice in Options › Language, else the account's
+// preferred language or the device's) and own the locale fallback and the
+// account strings (`starhermit.*`). Every string is drawn through T() each
+// frame, so a change shows on the next frame and never restarts the stage.
+import { strings } from "starhermit:engine";
 import * as ui from "starhermit:ui";
-import { T as tr, setLang } from "../js/lang.js";
-import { shText } from "../js/sh-i18n.js";
 
-let locale = "";
-function apply(tag: string): void {
-  const next = setLang(String(tag || "en-US")) as string;
-  if (next === locale) return;
-  locale = next;
-  ui.setLanguage(locale);
-}
-apply(preferences().language);
-onPreferencesChange((p) => apply(p.language));
+strings.load("assets/strings.json");
+strings.defaultLocale = "en-US";
+ui.setLanguage(strings.locale);
+strings.onChange((locale) => ui.setLanguage(locale));
 
-export function currentLocale(): string { return locale; }
 export type Vars = Record<string, string | number>;
 /** An English source string in the player's language; `{name}` placeholders from vars. */
-export function T(key: string, vars?: Vars | null): string { return tr(key, vars ?? undefined) as string; }
+export function T(key: string, vars?: Vars | null): string { return strings.t(key, vars ?? undefined); }
 /** Marks an English key that is translated with T() where it is shown. */
 export const N = (s: string): string => s;
-/** The account strings (signIn, invite, inviteCopied, inviteLink, signedOut, lbPosting, lbRank, lbPosted, lbNotPosted). */
-export function S(key: string, vars?: Vars): string { return shText(key, vars) as string; }
+/** The account strings (signIn, invite, inviteCopied, inviteLink, signedOut, leaderboardPosting, leaderboardRank, leaderboardPosted, leaderboardNotPosted). */
+export function S(key: string, vars?: Vars): string { return strings.t(`starhermit.${key}`, vars); }
 /** ui.js levelLabel: display names for generated level names ("Emerald Keep 3", "Daily 2026-10-17"). */
 export function levelLabel(level: { name?: string; daily?: number; excluded?: boolean } | null): string {
   if (!level) return "";

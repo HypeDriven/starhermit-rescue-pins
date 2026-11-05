@@ -137,7 +137,11 @@ function menus() {
 }
 
 if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split('/').pop())) {
-  const out = { 'journey-keys.play': journeyKeys(), 'learn-phone.play': learnPhone(), 'practice-land.play': practiceLand(), 'menus.play': menus() };
+  // The graphics-level bench (tools/engine-tier-bench.mjs): Journey stage 2's castle (bricks, glass, torches, dust), 600 frames.
+  const tierBench = ['# Graphics-level bench (tools/gen-plays.mjs; generated: do not edit): Journey stage 2 in play, 600 frames measured.',
+    'until 600 Daily Challenge', 'frames 10', 'click =Journey', 'until 300 ☆ 2', 'frames 10', 'click Emerald Keep 2 —', 'until 300 Pins you can pull', 'frames 120',
+    'measure start', 'frames 600', 'measure stop'].join('\n') + '\n';
+  const out = { 'tier-bench.play': tierBench, 'journey-keys.play': journeyKeys(), 'learn-phone.play': learnPhone(), 'practice-land.play': practiceLand(), 'menus.play': menus() };
   for (const [f, text] of Object.entries(out)) writeFileSync(new URL(`../tests/native/${f}`, import.meta.url), text);
   console.log(`wrote ${Object.keys(out).join(', ')}`);
 }
