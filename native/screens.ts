@@ -1,3 +1,7 @@
+import { localizedStyle as __l10nStyle } from "./l10n/font.ts";
+import { localizedDrawOptions as __l10nDrawOptions } from "./l10n/font.ts";
+// localization-runtime:attached
+import { openLocalizedOptions as __l10nOptions } from "./l10n/menu.ts";
 // The browser build's DOM shell (js/ui.js + index.html's <style>) as
 // starhermit:ui, built every frame over the castle: the left rail (stage
 // name, objective, moves against par, theme), the right rail (status: player,
@@ -12,7 +16,21 @@
 // three columns), short landscape (≤ 480 px tall: narrow rails either side)
 // and compact (the rails above and below the castle). The castle view's
 // rectangle goes to main.ts (view → render.ts).
-import { afterRender, frame, openMenu } from "starhermit:engine";
+// The browser build's DOM shell (js/ui.js + index.html's <style>) as
+// starhermit:ui, built every frame over the castle: the left rail (stage
+// name, objective, moves against par, theme), the right rail (status: player,
+// saved, score, the hint, the pins you can pull as buttons, the sync line),
+// the tray (Undo, Hint, Pause; mirrored for the left-handed tray), the coach
+// box under the castle (first-play guidance and the lesson text), named
+// targets over the brass pins (the old picking's DOM equivalent: screen
+// readers and play scripts find them) and the board's text mirror, the
+// toast, and every overlay panel (title, modes, journey, profile, help,
+// settings, countdown, pause, results) over the dimmed castle. The old media
+// queries are layouts picked by the window's logical size: wide (≥ 1024 px:
+// three columns), short landscape (≤ 480 px tall: narrow rails either side)
+// and compact (the rails above and below the castle). The castle view's
+// rectangle goes to main.ts (view → render.ts).
+import { afterRender, frame } from "starhermit:engine";
 import { bindings, requestRebind } from "starhermit:input";
 import * as draw from "starhermit:draw";
 import * as ui from "starhermit:ui";
@@ -41,7 +59,7 @@ function textWidth(text: string, style: string, kind?: "button" | "heading"): nu
 /** Text up to `width` wide: one label when it fits, else a paragraph. */
 function para(text: string, width: number, cls = "text", id?: string): void {
   if (!text) return;
-  let u = ui.style(cls);
+  let u = ui.style(__l10nStyle(cls));
   if (id) u = u.id(id);
   if (textWidth(text, cls) <= width) u.label(text);
   else u.paragraph(text, Math.max(20, width));
@@ -60,12 +78,12 @@ function button(b: Btn): void {
   else if (b.width != null && buttonWidth(b.text, style) > b.width) {
     // a label wider than its button wraps (labels don't)
     const inner = b.width - 36;
-    opts.content = () => { ui.style(style === "btn-primary" ? "wrap-ink" : "wrap").paragraph(b.text, Math.max(20, inner)); };
+    opts.content = () => { ui.style(__l10nStyle(style === "btn-primary" ? "wrap-ink" : "wrap")).paragraph(b.text, Math.max(20, inner)); };
   } else if (b.name && b.name !== b.text) opts.content = () => { ui.label(b.text); };
   const s: ui.Style = {};
   if (b.width != null) s.width = b.width;
   if (b.height != null) s.height = b.height;
-  if (ui.style(style, s).id(b.id).button(b.name ?? b.text, opts) && fresh()) {
+  if (ui.style(__l10nStyle(style), __l10nStyle(s)).id(b.id).button(b.name ?? b.text, opts) && fresh()) {
     afterRender(() => { sound("ack"); b.act(); });
   }
 }
@@ -82,7 +100,7 @@ function toWindow(x: number, y: number, w: number, h: number): ui.Rect {
 /** A box over a logical rectangle drawn by a placed role-none widget. */
 function paint(id: string, x: number, y: number, w: number, h: number, cls: string): void {
   if (w <= 0 || h <= 0) return;
-  ui.place(id, { anchor: "top-start", x, y }, () => { ui.style(cls).widget("", { role: "none", size: { width: w, height: h } }); });
+  ui.place(id, { anchor: "top-start", x, y }, () => { ui.style(__l10nStyle(cls)).widget("", { role: "none", size: { width: w, height: h } }); });
 }
 
 // ------------------------------------------------------------------ the frame
@@ -151,9 +169,9 @@ function railBox(id: string, x: number, y: number, w: number, h: number, build: 
 }
 function stat(id: string, k: string, v: string, w: number): void {
   ui.row(id, () => {
-    ui.style("stat-k").label(k);
+    ui.style(__l10nStyle("stat-k")).label(k);
     ui.spacer();
-    ui.style("stat-v").id(`${id}-v`).label(v);
+    ui.style(__l10nStyle("stat-v")).id(`${id}-v`).label(v);
   }, { style: "stat", width: w, align: "center" });
 }
 /** .rp-rail-left: the stage name, objective, moves, theme. */
@@ -223,7 +241,7 @@ function coachBox(c: NonNullable<ReturnType<typeof coach>>, L: Layout, st: { x: 
   ui.place("coach", { anchor: "top-start", x: st.x + m, y }, () => {
     const r = ui.row("coach-row", () => {
       const edgeH = Math.max(10, (lastSize.get("coach")?.height ?? 0) / L.sc - (L.land ? 12 : 20));
-      ui.style("coach-edge").widget("", { role: "none", size: { width: 6, height: edgeH } });
+      ui.style(__l10nStyle("coach-edge")).widget("", { role: "none", size: { width: 6, height: edgeH } });
       const dismissW = c.dismiss ? buttonWidth(T("Got it"), "btn-quiet") : 0;
       const bw = w - 28 - 6 - 12 - (c.dismiss ? dismissW + 12 : 0);
       ui.column("coach-body", () => {
@@ -364,8 +382,8 @@ function modesPanel(w: number): void {
       id: `mode-${id}`, text: T(name), name: T(name), style: on ? "btn-mode-on" : "btn-mode", width: w, act: () => startMode(id),
       content: () => ui.column(`mode-${id}-face`, () => {
         ui.row(`mode-${id}-top`, () => {
-          ui.style(on ? "mode-name-on" : "mode-name").label(T(name));
-          if (on) ui.row(`mode-${id}-badge`, () => ui.style("badge-text").label(T("Recommended")), { style: "badge" });
+          ui.style(__l10nStyle(on ? "mode-name-on" : "mode-name")).label(T(name));
+          if (on) ui.row(`mode-${id}-badge`, () => ui.style(__l10nStyle("badge-text")).label(T("Recommended")), { style: "badge" });
         }, { spacing: 8, align: "center" });
         para(T(desc), iw, on ? "mode-desc-on" : "mode-desc");
       }, { spacing: 2, width: iw }),
@@ -464,7 +482,7 @@ function settingsSections(w: number, inGame: boolean): void {
   section("set-audio", T("Audio"), (iw) => {
     para(T("Volumes, mute, graphics quality, language, larger text, high contrast and reduced motion are in the StarHermit Options."), iw, "dim", "options-note");
     flow("set-runtime", [
-      { id: "btn-options", text: T("Open Options"), act: () => openMenu() },
+      { id: "btn-options", text: T("Open Options"), act: () => __l10nOptions() },
       { id: "btn-rebind", text: T("Key bindings"), act: () => requestRebind() },
     ], iw, 8);
     toggleRow("set-captions", T("Captions"), o.captions, iw, (v) => platform.setOption("captions", v));
@@ -503,7 +521,7 @@ function toggleRow(id: string, label: string, on: boolean, w: number, set: (v: b
         const s = st.scale, box = 22 * s, bx = r.x + (r.width - box) / 2, by = r.y + (r.height - box) / 2;
         draw.roundRect(bx, by, box, box, 4, on ? "#8cf0b9" : "#313b4c");
         draw.strokeRoundRect(bx, by, box, box, 4, "#5d6a80", 2);
-        if (on) draw.text("✓", bx + box / 2, by + 1 * s, { size: 17 * s, color: "#0c2418", align: "center", weight: "bold" });
+        if (on) draw.text("✓", bx + box / 2, by + 1 * s, __l10nDrawOptions({ size: 17 * s, color: "#0c2418", align: "center", weight: "bold" }));
       },
     });
     if (res.activated && fresh()) afterRender(() => set(!on));
@@ -521,7 +539,7 @@ function pausePanel(w: number): void {
 }
 function countdownPanel(w: number): void {
   if (app.preparing) para(T("Preparing today's castle…"), w, "h2", "countdown-prep");
-  else ui.row("countdown-row", () => ui.style("countdown").id("countdown").label(app.countdown), { width: w, justify: "center" });
+  else ui.row("countdown-row", () => ui.style(__l10nStyle("countdown")).id("countdown").label(app.countdown), { width: w, justify: "center" });
 }
 function resultsPanel(w: number): void {
   const r = app.results;
