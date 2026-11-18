@@ -104,7 +104,7 @@ function paint(id: string, x: number, y: number, w: number, h: number, cls: stri
 }
 
 // ------------------------------------------------------------------ the frame
-export function drawScreens(): void {
+function drawScreensImmediate(): void {
   const L = layoutNow();
   const f = frame();
   shell(L);
@@ -574,4 +574,11 @@ function resultsPanel(w: number): void {
     { id: "btn-menu", text: T("Menu"), style: "btn-quiet", act: showTitle },
   ], w, 8);
   if (r.dailyNote) para(r.dailyNote, w, "win", "results-daily");
+}
+
+export function drawScreens(): void {
+  if (!(app.overlay === "help")) { drawScreensImmediate(); return; }
+  const actions = ["prev","next","pull","pause","undo","hint","camera"];
+  const version = JSON.stringify([(app as any).settings ?? (app as any).options ?? {}, (platform as any).options ?? {}, actions.map((action) => bindings(action))]);
+  ui.retain!("help-screen", version, drawScreensImmediate);
 }

@@ -24,13 +24,9 @@
 // The old canvas sat between the rails: the camera spans the window and its
 // frustum is offset so the castle is framed in that rectangle.
 import {
-  ParticleEmitter,
-  ACESFilmicToneMapping, AdditiveBlending, BoxGeometry, BufferAttribute, BufferGeometry, CanvasTexture, CapsuleGeometry, Color,
-  ConeGeometry, CylinderGeometry, DirectionalLight, EdgesGeometry, Fog, Group, HemisphereLight, LineBasicMaterial, LineSegments, Mesh,
-  MeshBasicMaterial, MeshLambertMaterial, MeshPhysicalMaterial, MeshStandardMaterial, OrthographicCamera, PMREMGenerator, PointLight,
-  Points, PointsMaterial, Raycaster, RepeatWrapping, RoomEnvironment, SRGBColorSpace, SphereGeometry, TorusGeometry, Vector2, Vector3,
-  pointerToNdc, renderer, scene, type Material, type Object3D, type Texture,
+  ACESFilmicToneMapping, AdditiveBlending, BoxGeometry, BufferAttribute, BufferGeometry, CanvasTexture, CapsuleGeometry, Color, ConeGeometry, CylinderGeometry, DirectionalLight, EdgesGeometry, Fog, Group, HemisphereLight, LineBasicMaterial, LineSegments, Mesh, MeshBasicMaterial, MeshLambertMaterial, MeshPhysicalMaterial, MeshStandardMaterial, OrthographicCamera, PMREMGenerator, PointLight, Points, PointsMaterial, Raycaster, RepeatWrapping, RoomEnvironment, SRGBColorSpace, SphereGeometry, TorusGeometry, Vector2, Vector3, pointerToNdc, renderer, scene, type Material, type Object3D, type Texture,
 } from "starhermit:scene";
+import { GPUParticleEmitter } from "starhermit:particles";
 import { OffscreenCanvas, type OffscreenCanvasRenderingContext2D } from "starhermit:canvas";
 import type { LevelDef, State, Theme } from "./game.ts";
 import { particleCount, type Look } from "./quality.ts";
@@ -151,7 +147,7 @@ let glassMat: Material | null = null;
 let lavaMat: MeshStandardMaterial | MeshLambertMaterial | null = null;
 let lavaTex: CanvasTexture | null = null;
 let torches: Torch[] = [];
-let dust: ParticleEmitter | null = null, embers: Points | null = null;
+let dust: GPUParticleEmitter | null = null, embers: Points | null = null;
 let ember = { life: new Float32Array(0), cell: new Int32Array(0), jitter: new Float32Array(0), rnd: rng(11) };
 let selectionMarker: Mesh | null = null;
 let selectedPinId: string | null = null;
@@ -387,7 +383,7 @@ function buildParticles(W: number, H: number): void {
   {
     const mat = track(new PointsMaterial({ size: 0.09, map: dot, color: 0xfff1d0, transparent: true, opacity: 0.5,
       depthWrite: false, blending: AdditiveBlending, sizeAttenuation: true }));
-    dust = new ParticleEmitter({ capacity: n, material: mat, seed: 11, space: "local", shape: "box", extent: [(W + 3) / 2, (H + 3) / 2, 0.75],
+    dust = new GPUParticleEmitter({ capacity: n, material: mat, seed: 11, space: "local", shape: "box", extent: [(W + 3) / 2, (H + 3) / 2, 0.75],
       velocity: [0.12, 0, 0], velocitySpread: [0, 0.05, 0], life: [10, 40], rate: n / 25 });
     dust.position.z = 1.95;
     dust.frustumCulled = false;
