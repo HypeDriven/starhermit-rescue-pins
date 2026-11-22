@@ -9,7 +9,7 @@
 
 ## 0. Implementation on the StarHermit engine
 
-Rescue Pins is a StarHermit engine **script game** (`starhermit.txt`: `engine.api=1`, `engine.entry=native/main.ts`, `engine.version=1.44.1`, `engine.minor=44`, capabilities `platform`, `storage`, `clipboard`). The StarHermit client plays it natively; browsers open `launch=index.html`, the engine's web loader that `npm run package` writes with `starhermit-files.json` (never edit them; repackage after every change).
+Rescue Pins is a StarHermit engine **script game** (`starhermit.txt`: `engine.api=1`, `engine.entry=native/main.ts`, `engine.version=1.47.0`, `engine.minor=47`, capabilities `platform`, `storage`, `clipboard`). The StarHermit client plays it natively; browsers open `launch=index.html`, the engine's web loader that `npm run package` writes with `starhermit-files.json` (never edit them; repackage after every change).
 
 - **Rules and content** are plain ES modules shared with the node tests: `js/rules.js` (chambers, pins, the flow resolution, scoring, the BFS solver), `js/content.js` (themes, five lessons, the Journey generator, the Daily generator), `js/journey.js` (the 40 Journey stages as the generator builds them, written by `tools/gen-levels.mjs`: the generator takes ~1 s in V8 and far longer natively; a unit test checks the table still matches), `js/session.js` (validated commands, undo, replay envelope, snapshots, `mergeProgression`), `js/achievements.js`, `js/progress.js` (the save model, old cloud slot and settings migration).
 - **Client** (`native/*.ts`): `main.ts` (screen flow, actions, input, the fixed-step clock, lifecycle), `screens.ts` (`starhermit:ui`), `render.ts` (`starhermit:scene`), `audio.ts`, `platform.ts`, `quality.ts`, `style.ts`, `i18n.ts`, `solve.ts` + `solve-worker.js` (a `starhermit:script` module worker running the hint's solve and the Daily's generation off the game's thread).
@@ -304,8 +304,12 @@ The string tables include complete regional variants for `fr-BE`, `de-BE`, `en-S
 
 Cosmetic particle emitters use native GPU particles with automatic CPU fallback on devices or graphics tiers without GPU particle support.
 
-## Engine 1.44.1
+## Engine 1.47.0
 
-Browser play uses the WebGPU-only StarHermit 1.44.1 web runtime. Automatic ray-traced shadows are enabled on supported Vulkan devices, with mapped-shadow fallbacks elsewhere. Packaging creates block-compressed runtime textures and compressed glTF copies, retaining original image fallbacks.
+Browser play uses the WebGPU-only StarHermit 1.47.0 web runtime. Automatic ray-traced shadows are enabled on supported Vulkan devices, with mapped-shadow fallbacks elsewhere. Packaging creates block-compressed runtime textures and compressed glTF copies, retaining original image fallbacks.
 
 The help screen replays through retained native UI while its contents, options, layout and key bindings are unchanged.
+
+Browser rendering uses the engine's asynchronous pipeline creation so newly encountered materials do not stall the page. Native play retains the engine's synchronous pipeline behavior.
+
+Higher graphics tiers use native per-object motion blur for moving pieces and effects. Camera motion stays sharp, lower tiers omit the effect, and the runtime's Motion blur and Reduce motion preferences remain authoritative.
