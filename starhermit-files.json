@@ -42,7 +42,7 @@
     "native/solve-worker.js": {"sha256": "16245ef0e4bc0db10fb92e5ab775a0b094cd6608f0d0aee793596f83c6325cda", "size": 982},
     "native/solve.ts": {"sha256": "c5d31b2d2a7646dee1f91a7bea3092d7204fb4de93ba6bb8520bfa23be07ebe4", "size": 2798},
     "native/style.ts": {"sha256": "6df689f2162d4e4f6286373d2deaacee690d58e70404fa481feec1f74b22870f", "size": 3101},
-    "publication.json": {"sha256": "d8ed587ebf0bc1ab6e881903bc665104315ee5c702726bf972ea09b0033ca92a", "size": 4308},
+    "publication.json": {"sha256": "3796d1b9521dc6c03e85adae4a0e5514ba7a53919978f9d3c894e4043ab044e1", "size": 4307},
     "score-script.js": {"sha256": "4133359e8234cac920651c89f79485aa401cdca970720662e50150de4431f600", "size": 2487},
     "sfx/blocked-thunk.opus": {"sha256": "591ec9f99afc8e2711c4e4ed4aa61e992df076cc89ad34aa5395ee0a840903ee", "size": 14370},
     "sfx/fail-thud.opus": {"sha256": "ef1f28933b879f7b351ef6e74f2b3756bf4d2c41f547c10e77ee67d8df99ecc4", "size": 12765},
