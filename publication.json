@@ -12,7 +12,7 @@
     "metadataSource": "starhermit.txt",
     "createdAt": "2026-09-01T07:01:06.524316+00:00",
     "coverArtSource": "manifest",
-    "coverArtUpdatedAt": "2026-11-26T16:08:43.917352+00:00",
+    "coverArtUpdatedAt": "2026-11-26T22:03:37.460666+00:00",
     "submittedByUserId": "2712e04e-461b-4d23-81ae-e40b429128a8",
     "submittedByUsername": "starhermit",
     "hosting": {
@@ -22,9 +22,9 @@
       "pinnedCommitSha": null,
       "deployedCommitSha": null,
       "deployError": null,
-      "deployedAt": "2026-11-26T16:08:43.902795+00:00",
+      "deployedAt": "2026-11-26T22:03:37.448374+00:00",
       "externalLaunchUrl": null,
-      "engineVersion": "1.50.0",
+      "engineVersion": "1.51.0",
       "deployWarning": null
     },
     "description": "Pull pins in the right order to separate hazards, guide safe materials, and rescue a trapped character.",
@@ -36,19 +36,19 @@
     "links": [],
     "isDisabled": false
   },
-  "publishedAt": "2026-11-26T16:08:43.182Z",
-  "sourceCommit": "f9a92a7163df7a766977078f3910715742943e7c",
-  "bytesReceived": 1557000,
-  "archiveSha256": "b2f2923111e58f0062655b13744e3ef7f51a2d4c834412b702f58db5ae339194",
+  "publishedAt": "2026-11-26T22:03:37.813Z",
+  "sourceCommit": "2aa2afd0e3873fe476bf912eed0dea06c458c02d",
+  "bytesReceived": 1557004,
+  "archiveSha256": "4efe6a6f66266559b03b57febe57c4fea9a9edeba4a212171ced8786e603cf27",
   "indexSha256": "d723a01bcbf9783fd168ac7955309137421168c60585ef9ee2f0c410ceab9e94",
   "result": {
     "clientPublished": true,
     "serverImageLoaded": false,
     "imageDigest": null,
-    "bytesReceived": 1557000,
+    "bytesReceived": 1557004,
     "mode": "replace",
     "filesRemoved": 0,
-    "engineVersion": "1.50.0",
+    "engineVersion": "1.51.0",
     "deployWarning": null
   },
   "liveVerification": {
