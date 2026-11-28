@@ -32,7 +32,6 @@ export function loadSfx(): void {
       if (list.length) banks.set(ev, new SoundBank({ clips: list, order: "sequence", bus: "effects" }));
     });
   }
-  renderPad().then((c) => { padClip = c; }, (e: unknown) => { console.warn(`audio: ${String(e)}`); });
 }
 
 export function play(ev: Sfx): void {
@@ -62,7 +61,17 @@ export function setSuspended(on: boolean): void {
 }
 
 /** Each frame, once the mixer runs: the pad. */
+let __bedsStarted = false;
+function startBeds(): void {
+  if (__bedsStarted) return;
+  __bedsStarted = true;
+  void (async () => {
+    renderPad().then((c) => { padClip = c; }, (e: unknown) => { console.warn(`audio: ${String(e)}`); });
+  })();
+}
+
 export function update(): void {
+  startBeds();
   if (context.state !== "running" || !padWanted || !padClip || padVoice) return;
   try { padVoice = playClip(padClip, { bus: "music", gain: suspended ? 0 : PAD_GAIN, loop: true }); } catch { padVoice = null; }
 }
